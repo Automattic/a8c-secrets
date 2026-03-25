@@ -1,0 +1,271 @@
+use clap::{Parser, Subcommand};
+use clap_complete::Shell;
+
+/// Manage encrypted secrets in Automattic mobile repositories.
+///
+/// Wraps the `age` encryption library to encrypt/decrypt secret files,
+/// keeping decrypted secrets outside the repository working tree in
+/// ~/.a8c-secrets/<repo>/, protecting them from accidental commits.
+///
+/// Use `a8c-secrets --help-long` for a comprehensive guide.
+#[derive(Parser)]
+#[command(
+    name = "a8c-secrets",
+    version,
+    after_long_help = "\
+TERMINOLOGY:
+  \"Private key\" corresponds to what age calls an \"identity\" (AGE-SECRET-KEY-...).
+  \"Public key\" corresponds to what age calls a \"recipient\" (age1...).
+
+ENVIRONMENT:
+  A8C_SECRETS_IDENTITY    Private key override. If value starts with AGE-SECRET-KEY-,
+                          used directly in memory. If a file path, read from disk.
+                          Intended for CI (Buildkite)."
+)]
+pub struct Cli {
+    #[command(subcommand)]
+    pub command: Command,
+}
+
+#[derive(Subcommand)]
+pub enum Command {
+    /// Decrypt all secret files into ~/.a8c-secrets/<repo>/
+    #[command(
+        long_about = "\
+Decrypt all .age files from .a8c-secrets/ into ~/.a8c-secrets/<repo>/.
+
+On first run, if no private key is found, interactively prompts you to paste
+the dev private key from the Secret Store. In CI (non-TTY or --non-interactive),
+errors instead of prompting.
+
+Orphan detection: if local decrypted files exist with no corresponding .age file
+in the repo, lists them and prompts for removal.",
+        after_long_help = "\
+EXAMPLES:
+  a8c-secrets decrypt              # Interactive: prompts for key if needed
+  a8c-secrets decrypt --non-interactive  # CI: errors on missing key
+
+ENVIRONMENT:
+  A8C_SECRETS_IDENTITY    Overrides the private key (see top-level --help)"
+    )]
+    Decrypt(DecryptArgs),
+
+    /// Encrypt modified secret files back into the repository
+    #[command(
+        long_about = "\
+Encrypt secret files from ~/.a8c-secrets/<repo>/ into .a8c-secrets/*.age.
+
+Uses smart comparison by default: decrypts existing .age files in memory and
+compares byte-for-byte with the local plaintext. Only re-encrypts if content
+differs. This avoids noisy git diffs since age uses random nonces (encrypting
+the same content twice produces different ciphertext).
+
+Encrypts to ALL public keys in .a8c-secrets/keys.pub (both dev and CI).",
+        after_long_help = "\
+EXAMPLES:
+  a8c-secrets encrypt                # Smart-encrypt all files
+  a8c-secrets encrypt api-keys.yml   # Smart-encrypt a specific file
+  a8c-secrets encrypt --force        # Re-encrypt everything (after key rotation)
+
+NOTES:
+  Smart comparison requires the private key to decrypt .age files. If missing,
+  use --force or run `a8c-secrets keys import` first."
+    )]
+    Encrypt(EncryptArgs),
+
+    /// Open a secret file in $EDITOR, encrypting on save if changed
+    #[command(
+        long_about = "\
+Open a secret file in your editor for modification.
+
+Opens ~/.a8c-secrets/<repo>/<file> in $EDITOR (default: vi). Compares file
+content before and after the editor session — only encrypts if changed.
+If the file doesn't exist, prompts to create it.",
+        after_long_help = "\
+EXAMPLES:
+  a8c-secrets edit google-services.json   # Edit an existing secret
+  a8c-secrets edit new-config.yml         # Create and edit a new secret
+  EDITOR=code a8c-secrets edit api.json   # Use VS Code as editor"
+    )]
+    Edit(EditArgs),
+
+    /// Remove a secret file (both plaintext and .age)
+    #[command(
+        long_about = "\
+Remove a secret file completely.
+
+Deletes both the decrypted file at ~/.a8c-secrets/<repo>/<file> and the
+encrypted file at .a8c-secrets/<file>.age. Prompts for confirmation.",
+        after_long_help = "\
+EXAMPLES:
+  a8c-secrets rm old-api-key.json"
+    )]
+    Rm(RmArgs),
+
+    /// Show sync status of all secret files
+    #[command(
+        long_about = "\
+Show the sync status of all secret files.
+
+Displays the repo slug, private key status, and each file's sync state:
+  \u{2713}  in sync         — local plaintext matches encrypted .age content
+  \u{26a0}  modified locally — plaintext differs from .age (needs encrypt)
+  \u{2739}  local only       — no .age file in repo (new, needs encrypt)
+  \u{25c7}  encrypted only   — no local plaintext (needs decrypt)"
+    )]
+    Status,
+
+    /// Key management (show, import, rotate)
+    Keys(KeysSub),
+
+    /// Initial setup and maintenance
+    Setup(SetupSub),
+}
+
+// -- Daily operation args --
+
+#[derive(clap::Args)]
+pub struct DecryptArgs {
+    /// Run without prompts (auto-removes orphans, errors on missing key).
+    /// Automatically enabled when stdin is not a TTY.
+    #[arg(long)]
+    pub non_interactive: bool,
+}
+
+#[derive(clap::Args)]
+pub struct EncryptArgs {
+    /// Specific files to encrypt. If omitted, considers all files.
+    pub files: Vec<String>,
+
+    /// Skip smart comparison and re-encrypt unconditionally.
+    /// Use after key rotation.
+    #[arg(long)]
+    pub force: bool,
+}
+
+#[derive(clap::Args)]
+pub struct EditArgs {
+    /// Name of the secret file to edit (e.g. "google-services.json")
+    pub file: String,
+}
+
+#[derive(clap::Args)]
+pub struct RmArgs {
+    /// Name of the secret file to remove
+    pub file: String,
+}
+
+// -- Keys subcommands --
+
+#[derive(clap::Args)]
+pub struct KeysSub {
+    #[command(subcommand)]
+    pub command: KeysCommand,
+}
+
+#[derive(Subcommand)]
+pub enum KeysCommand {
+    /// Display private key path and public keys with dev/ci identification
+    #[command(
+        long_about = "\
+Display key information for the current repository.
+
+Shows the private key file path, derives the corresponding public key,
+and lists all public keys from .a8c-secrets/keys.pub. Identifies which
+key is dev (matches your local private key) and which is CI."
+    )]
+    Show,
+
+    /// Import a private key from the Secret Store
+    #[command(
+        long_about = "\
+Import a dev private key from the Automattic Secret Store.
+
+Prompts you to paste the private key string (AGE-SECRET-KEY-...) and saves
+it to ~/.a8c-secrets/keys/<repo>.key with mode 0600. Overwrites any existing
+key for this repo."
+    )]
+    Import,
+
+    /// Generate a new key pair and re-encrypt all files
+    #[command(
+        long_about = "\
+Rotate a key pair: generate a new key and re-encrypt all .age files.
+
+Exactly one of --dev or --ci is required. The target key is identified by
+matching, not by comment labels in keys.pub:
+  --dev  replaces the key matching your local private key
+  --ci   replaces the other key
+
+After rotation, prints the new private key and manual next steps.",
+        after_long_help = "\
+EXAMPLES:
+  a8c-secrets keys rotate --dev    # After employee offboarding
+  a8c-secrets keys rotate --ci     # Rotate the CI key
+
+NOTE: Key rotation does NOT rotate the actual secret values inside the
+encrypted files. You must separately rotate API keys, tokens, etc."
+    )]
+    Rotate(RotateArgs),
+}
+
+#[derive(clap::Args)]
+#[command(group = clap::ArgGroup::new("target").required(true).multiple(false))]
+pub struct RotateArgs {
+    /// Rotate the developer key
+    #[arg(long, group = "target")]
+    pub dev: bool,
+
+    /// Rotate the CI key
+    #[arg(long, group = "target")]
+    pub ci: bool,
+}
+
+// -- Setup subcommands --
+
+#[derive(clap::Args)]
+pub struct SetupSub {
+    #[command(subcommand)]
+    pub command: SetupCommand,
+}
+
+#[derive(Subcommand)]
+pub enum SetupCommand {
+    /// Initialize a8c-secrets in the current repository
+    #[command(
+        long_about = "\
+Initialize a8c-secrets in the current git repository.
+
+Creates .a8c-secrets/config.toml and keys.pub, generates both dev and CI
+key pairs, and saves the dev private key locally. Derives the repo slug
+from the git remote URL (or prompts if unavailable)."
+    )]
+    Init,
+
+    /// Remove all a8c-secrets data (repo config, local keys, decrypted files)
+    #[command(
+        long_about = "\
+Completely remove a8c-secrets from the repository and local machine.
+
+Deletes .a8c-secrets/ from the repo, the private key at
+~/.a8c-secrets/keys/<repo>.key, and all decrypted files at
+~/.a8c-secrets/<repo>/. Requires typing the repo slug to confirm."
+    )]
+    Nuke,
+
+    /// Output shell completion script
+    #[command(
+        after_long_help = "\
+EXAMPLES:
+  a8c-secrets setup completions bash >> ~/.bashrc
+  a8c-secrets setup completions zsh > ~/.zfunc/_a8c-secrets
+  a8c-secrets setup completions fish > ~/.config/fish/completions/a8c-secrets.fish"
+    )]
+    Completions(CompletionsArgs),
+}
+
+#[derive(clap::Args)]
+pub struct CompletionsArgs {
+    /// Target shell
+    pub shell: Shell,
+}

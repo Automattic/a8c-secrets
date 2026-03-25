@@ -7,7 +7,7 @@ use clap_complete::Shell;
 /// keeping decrypted secrets outside the repository working tree in
 /// ~/.a8c-secrets/<repo>/, protecting them from accidental commits.
 ///
-/// Use `a8c-secrets --help-long` for a comprehensive guide.
+/// Use `a8c-secrets manual` for a comprehensive guide.
 #[derive(Parser)]
 #[command(
     name = "a8c-secrets",
@@ -120,6 +120,9 @@ Displays the repo slug, private key status, and each file's sync state:
 
     /// Initial setup and maintenance
     Setup(SetupSub),
+
+    /// Print a comprehensive man-page-style guide
+    Manual,
 }
 
 // -- Daily operation args --
@@ -269,3 +272,4 @@ pub struct CompletionsArgs {
     /// Target shell
     pub shell: Shell,
 }
+

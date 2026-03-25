@@ -10,11 +10,6 @@ use clap::Parser;
 use cli::Cli;
 
 fn main() -> Result<()> {
-    // Handle --help-long before clap parsing (clap would error on missing subcommand)
-    if std::env::args().any(|a| a == "--help-long") {
-        help_long::print_and_exit();
-    }
-
     let cli = Cli::parse();
 
     match cli.command {
@@ -33,5 +28,6 @@ fn main() -> Result<()> {
             cli::SetupCommand::Nuke => commands::setup::nuke::run(),
             cli::SetupCommand::Completions(args) => commands::setup::completions::run(args),
         },
+        cli::Command::Manual => help_long::print_and_exit(),
     }
 }

@@ -1,9 +1,9 @@
 use std::io::{self, Write};
-use std::os::unix::fs::PermissionsExt;
 
 use anyhow::Result;
 
 use crate::config;
+use crate::permissions;
 
 pub fn run() -> Result<()> {
     let repo_root = config::find_repo_root()?;
@@ -29,12 +29,12 @@ pub fn run() -> Result<()> {
     let key_path = config::private_key_path(slug)?;
     if let Some(parent) = key_path.parent() {
         std::fs::create_dir_all(parent)?;
-        std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))?;
+        permissions::set_secure_dir_permissions(parent)?;
     }
 
     let existed = key_path.exists();
     std::fs::write(&key_path, format!("{key}\n"))?;
-    std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600))?;
+    permissions::set_secure_file_permissions(&key_path)?;
 
     if existed {
         println!("Updated {}", key_path.display());

@@ -1,11 +1,11 @@
 use std::io::{self, IsTerminal, Write};
-use std::os::unix::fs::PermissionsExt;
 
 use anyhow::{Context, Result};
 
 use crate::backend::{AgeCrateBackend, AgeBackend};
 use crate::cli::DecryptArgs;
 use crate::config::{self, SECRETS_DIR};
+use crate::permissions;
 
 pub fn run(args: DecryptArgs) -> Result<()> {
     let interactive = !args.non_interactive && io::stdin().is_terminal();
@@ -46,8 +46,7 @@ pub fn run(args: DecryptArgs) -> Result<()> {
         match backend.decrypt(&ciphertext, &private_key) {
             Ok(plaintext) => {
                 config::atomic_write(&out_path, &plaintext)?;
-                // Ensure decrypted files are owner-readable only
-                std::fs::set_permissions(&out_path, std::fs::Permissions::from_mode(0o600))?;
+                permissions::set_secure_file_permissions(&out_path)?;
                 println!("  {} — decrypted", name);
                 decrypted_count += 1;
             }
@@ -92,10 +91,10 @@ fn prompt_for_key(slug: &str) -> Result<String> {
     let key_path = config::private_key_path(slug)?;
     if let Some(parent) = key_path.parent() {
         std::fs::create_dir_all(parent)?;
-        std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))?;
+        permissions::set_secure_dir_permissions(parent)?;
     }
     std::fs::write(&key_path, format!("{key}\n"))?;
-    std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600))?;
+    permissions::set_secure_file_permissions(&key_path)?;
 
     println!("Saved to {}", key_path.display());
     println!();

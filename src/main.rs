@@ -3,6 +3,7 @@ mod cli;
 mod commands;
 mod config;
 mod help_long;
+mod permissions;
 
 use anyhow::Result;
 use clap::Parser;

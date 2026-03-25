@@ -1,10 +1,10 @@
 use std::io::{self, Write};
-use std::os::unix::fs::PermissionsExt;
 
 use anyhow::{Context, Result};
 
 use crate::backend::{AgeCrateBackend, AgeBackend};
 use crate::config::{self, SECRETS_DIR};
+use crate::permissions;
 
 pub fn run() -> Result<()> {
     let cwd = std::env::current_dir().context("Failed to get current directory")?;
@@ -65,11 +65,11 @@ pub fn run() -> Result<()> {
     // Save dev private key locally
     let keys_dir = config::secrets_home()?.join("keys");
     std::fs::create_dir_all(&keys_dir)?;
-    std::fs::set_permissions(&keys_dir, std::fs::Permissions::from_mode(0o700))?;
+    permissions::set_secure_dir_permissions(&keys_dir)?;
 
     let key_path = keys_dir.join(format!("{slug}.key"));
     std::fs::write(&key_path, format!("{dev_private}\n"))?;
-    std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600))?;
+    permissions::set_secure_file_permissions(&key_path)?;
 
     // Create the decrypted files directory
     let decrypted = config::decrypted_dir(&slug)?;

@@ -66,23 +66,22 @@ pub fn run(args: EncryptArgs) -> Result<()> {
             .with_context(|| format!("Failed to read {}", local_path.display()))?;
 
         // Smart comparison: if .age exists and we have a private key, decrypt and compare
-        if !args.force {
-            if let Some(ref key) = private_key {
-                if age_path.exists() {
-                    let ciphertext = std::fs::read(&age_path)?;
-                    match backend.decrypt(&ciphertext, key) {
-                        Ok(decrypted) if decrypted == local_content => {
-                            println!("  {name} — unchanged, skipping");
-                            skipped_count += 1;
-                            continue;
-                        }
-                        Ok(_) => {} // Content differs, will re-encrypt
-                        Err(e) => {
-                            eprintln!(
-                                "  {name} — warning: could not decrypt for comparison ({e}), re-encrypting"
-                            );
-                        }
-                    }
+        if !args.force
+            && let Some(ref key) = private_key
+            && age_path.exists()
+        {
+            let ciphertext = std::fs::read(&age_path)?;
+            match backend.decrypt(&ciphertext, key) {
+                Ok(decrypted) if decrypted == local_content => {
+                    println!("  {name} — unchanged, skipping");
+                    skipped_count += 1;
+                    continue;
+                }
+                Ok(_) => {} // Content differs, will re-encrypt
+                Err(e) => {
+                    eprintln!(
+                        "  {name} — warning: could not decrypt for comparison ({e}), re-encrypting"
+                    );
                 }
             }
         }

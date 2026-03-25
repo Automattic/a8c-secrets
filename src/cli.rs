@@ -8,7 +8,7 @@ use clap_complete::Shell;
 /// ~/.a8c-secrets/<repo>/, protecting them from accidental commits.
 ///
 /// Use `a8c-secrets manual` for a comprehensive guide.
-#[derive(Parser)]
+#[derive(Debug, Parser)]
 #[command(
     name = "a8c-secrets",
     version,
@@ -27,7 +27,7 @@ pub struct Cli {
     pub command: Command,
 }
 
-#[derive(Subcommand)]
+#[derive(Debug, Subcommand)]
 pub enum Command {
     /// Decrypt all secret files into ~/.a8c-secrets/<repo>/
     #[command(
@@ -127,7 +127,7 @@ Displays the repo slug, private key status, and each file's sync state:
 
 // -- Daily operation args --
 
-#[derive(clap::Args)]
+#[derive(Debug, clap::Args)]
 pub struct DecryptArgs {
     /// Run without prompts (auto-removes orphans, errors on missing key).
     /// Automatically enabled when stdin is not a TTY.
@@ -135,7 +135,7 @@ pub struct DecryptArgs {
     pub non_interactive: bool,
 }
 
-#[derive(clap::Args)]
+#[derive(Debug, clap::Args)]
 pub struct EncryptArgs {
     /// Specific files to encrypt. If omitted, considers all files.
     pub files: Vec<String>,
@@ -146,13 +146,13 @@ pub struct EncryptArgs {
     pub force: bool,
 }
 
-#[derive(clap::Args)]
+#[derive(Debug, clap::Args)]
 pub struct EditArgs {
     /// Name of the secret file to edit (e.g. "google-services.json")
     pub file: String,
 }
 
-#[derive(clap::Args)]
+#[derive(Debug, clap::Args)]
 pub struct RmArgs {
     /// Name of the secret file to remove
     pub file: String,
@@ -160,13 +160,13 @@ pub struct RmArgs {
 
 // -- Keys subcommands --
 
-#[derive(clap::Args)]
+#[derive(Debug, clap::Args)]
 pub struct KeysSub {
     #[command(subcommand)]
     pub command: KeysCommand,
 }
 
-#[derive(Subcommand)]
+#[derive(Debug, Subcommand)]
 pub enum KeysCommand {
     /// Display private key path and public keys with dev/ci identification
     #[command(
@@ -212,7 +212,7 @@ encrypted files. You must separately rotate API keys, tokens, etc."
     Rotate(RotateArgs),
 }
 
-#[derive(clap::Args)]
+#[derive(Debug, clap::Args)]
 #[command(group = clap::ArgGroup::new("target").required(true).multiple(false))]
 pub struct RotateArgs {
     /// Rotate the developer key
@@ -226,13 +226,13 @@ pub struct RotateArgs {
 
 // -- Setup subcommands --
 
-#[derive(clap::Args)]
+#[derive(Debug, clap::Args)]
 pub struct SetupSub {
     #[command(subcommand)]
     pub command: SetupCommand,
 }
 
-#[derive(Subcommand)]
+#[derive(Debug, Subcommand)]
 pub enum SetupCommand {
     /// Initialize a8c-secrets in the current repository
     #[command(
@@ -267,9 +267,112 @@ EXAMPLES:
     Completions(CompletionsArgs),
 }
 
-#[derive(clap::Args)]
+#[derive(Debug, clap::Args)]
 pub struct CompletionsArgs {
     /// Target shell
     pub shell: Shell,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::error::ErrorKind;
+
+    fn parse(args: &[&str]) -> Result<Cli, clap::Error> {
+        Cli::try_parse_from(std::iter::once("a8c-secrets").chain(args.iter().copied()))
+    }
+
+    #[test]
+    fn parse_decrypt() {
+        let cli = parse(&["decrypt"]).unwrap();
+        assert!(matches!(cli.command, Command::Decrypt(_)));
+    }
+
+    #[test]
+    fn parse_decrypt_non_interactive() {
+        let cli = parse(&["decrypt", "--non-interactive"]).unwrap();
+        if let Command::Decrypt(args) = cli.command {
+            assert!(args.non_interactive);
+        } else {
+            panic!("expected Decrypt");
+        }
+    }
+
+    #[test]
+    fn parse_encrypt_with_files_and_force() {
+        let cli = parse(&["encrypt", "--force", "a.json", "b.yml"]).unwrap();
+        if let Command::Encrypt(args) = cli.command {
+            assert!(args.force);
+            assert_eq!(args.files, vec!["a.json", "b.yml"]);
+        } else {
+            panic!("expected Encrypt");
+        }
+    }
+
+    #[test]
+    fn parse_encrypt_defaults() {
+        let cli = parse(&["encrypt"]).unwrap();
+        if let Command::Encrypt(args) = cli.command {
+            assert!(!args.force);
+            assert!(args.files.is_empty());
+        } else {
+            panic!("expected Encrypt");
+        }
+    }
+
+    #[test]
+    fn parse_edit() {
+        let cli = parse(&["edit", "secret.json"]).unwrap();
+        if let Command::Edit(args) = cli.command {
+            assert_eq!(args.file, "secret.json");
+        } else {
+            panic!("expected Edit");
+        }
+    }
+
+    #[test]
+    fn parse_edit_missing_file_errors() {
+        let err = parse(&["edit"]).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::MissingRequiredArgument);
+    }
+
+    #[test]
+    fn parse_keys_rotate_dev() {
+        let cli = parse(&["keys", "rotate", "--dev"]).unwrap();
+        if let Command::Keys(sub) = cli.command {
+            if let KeysCommand::Rotate(args) = sub.command {
+                assert!(args.dev);
+                assert!(!args.ci);
+            } else {
+                panic!("expected Rotate");
+            }
+        } else {
+            panic!("expected Keys");
+        }
+    }
+
+    #[test]
+    fn parse_keys_rotate_no_flag_errors() {
+        let err = parse(&["keys", "rotate"]).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::MissingRequiredArgument);
+    }
+
+    #[test]
+    fn parse_keys_rotate_both_flags_errors() {
+        let err = parse(&["keys", "rotate", "--dev", "--ci"]).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn parse_no_subcommand_errors() {
+        let err = parse(&[]).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand);
+    }
+
+    #[test]
+    fn parse_manual() {
+        let cli = parse(&["manual"]).unwrap();
+        assert!(matches!(cli.command, Command::Manual));
+    }
 }
 

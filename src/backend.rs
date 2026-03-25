@@ -82,3 +82,111 @@ pub fn derive_public_key(private_key: &str) -> Result<String> {
     Ok(identity.to_public().to_string())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn backend() -> AgeCrateBackend {
+        AgeCrateBackend::new()
+    }
+
+    #[test]
+    fn keygen_produces_valid_key_formats() {
+        let (private, public) = backend().keygen().unwrap();
+        assert!(private.starts_with("AGE-SECRET-KEY-"), "private key format");
+        assert!(public.starts_with("age1"), "public key format");
+    }
+
+    #[test]
+    fn encrypt_decrypt_round_trip() {
+        let b = backend();
+        let (private, public) = b.keygen().unwrap();
+        let plaintext = b"secret data for testing";
+
+        let ciphertext = b.encrypt(plaintext, &[public]).unwrap();
+        assert_ne!(ciphertext, plaintext, "ciphertext should differ from plaintext");
+
+        let decrypted = b.decrypt(&ciphertext, &private).unwrap();
+        assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn encrypt_for_multiple_recipients() {
+        let b = backend();
+        let (priv1, pub1) = b.keygen().unwrap();
+        let (priv2, pub2) = b.keygen().unwrap();
+        let plaintext = b"shared secret";
+
+        let ciphertext = b.encrypt(plaintext, &[pub1, pub2]).unwrap();
+
+        // Both recipients can decrypt
+        assert_eq!(b.decrypt(&ciphertext, &priv1).unwrap(), plaintext);
+        assert_eq!(b.decrypt(&ciphertext, &priv2).unwrap(), plaintext);
+    }
+
+    #[test]
+    fn decrypt_with_wrong_key_fails() {
+        let b = backend();
+        let (_, pub1) = b.keygen().unwrap();
+        let (_, pub_wrong) = b.keygen().unwrap();
+
+        // Encrypt for pub1, but derive a fresh wrong private key
+        let ciphertext = b.encrypt(b"secret", &[pub1]).unwrap();
+
+        // Generate a different key pair and try to decrypt
+        let wrong_private = b.keygen().unwrap().0;
+        let result = b.decrypt(&ciphertext, &wrong_private);
+        assert!(result.is_err());
+        // Suppress unused variable warning
+        let _ = pub_wrong;
+    }
+
+    #[test]
+    fn encrypt_empty_recipients_panics() {
+        let b = backend();
+        // age::Encryptor::with_recipients panics on empty recipients
+        let result = std::panic::catch_unwind(|| b.encrypt(b"data", &[]));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn encrypt_invalid_recipient_errors() {
+        let b = backend();
+        let result = b.encrypt(b"data", &["not-a-valid-key".to_string()]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn decrypt_invalid_ciphertext_errors() {
+        let b = backend();
+        let (private, _) = b.keygen().unwrap();
+        let result = b.decrypt(b"not valid age ciphertext", &private);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn derive_public_key_matches_keygen() {
+        let b = backend();
+        let (private, public) = b.keygen().unwrap();
+        let derived = derive_public_key(&private).unwrap();
+        assert_eq!(derived, public);
+    }
+
+    #[test]
+    fn derive_public_key_invalid_input() {
+        let result = derive_public_key("not-a-key");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn encrypt_produces_different_ciphertext_each_time() {
+        let b = backend();
+        let (_, public) = b.keygen().unwrap();
+        let plaintext = b"same content";
+
+        let ct1 = b.encrypt(plaintext, &[public.clone()]).unwrap();
+        let ct2 = b.encrypt(plaintext, &[public]).unwrap();
+        assert_ne!(ct1, ct2, "age uses random nonces, so ciphertext should differ");
+    }
+}
+

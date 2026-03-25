@@ -140,15 +140,10 @@ pub fn atomic_write(path: &Path, content: &[u8]) -> Result<()> {
 /// Try to derive a repo slug from the git remote "origin" URL.
 /// Extracts the last path component without `.git` suffix.
 /// e.g. `git@github.com:Automattic/wordpress-ios.git` -> `wordpress-ios`
-pub fn slug_from_git_remote() -> Option<String> {
-    let output = std::process::Command::new("git")
-        .args(["remote", "get-url", "origin"])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+/// Extract a repo slug from a git remote URL string.
+/// This is the pure logic extracted for testability; `slug_from_git_remote`
+/// handles the git subprocess call.
+pub fn slug_from_url(url: &str) -> Option<String> {
     let name = url
         .rsplit('/')
         .next()?
@@ -158,4 +153,165 @@ pub fn slug_from_git_remote() -> Option<String> {
         return None;
     }
     Some(name.to_lowercase())
+}
+
+pub fn slug_from_git_remote() -> Option<String> {
+    let output = std::process::Command::new("git")
+        .args(["remote", "get-url", "origin"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    slug_from_url(&url)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    // -- slug_from_url --
+
+    #[test]
+    fn slug_from_ssh_url() {
+        assert_eq!(
+            slug_from_url("git@github.com:Automattic/wordpress-ios.git"),
+            Some("wordpress-ios".to_string())
+        );
+    }
+
+    #[test]
+    fn slug_from_https_url() {
+        assert_eq!(
+            slug_from_url("https://github.com/Automattic/pocket-casts-android.git"),
+            Some("pocket-casts-android".to_string())
+        );
+    }
+
+    #[test]
+    fn slug_from_url_without_git_suffix() {
+        assert_eq!(
+            slug_from_url("https://github.com/Automattic/MyRepo"),
+            Some("myrepo".to_string())
+        );
+    }
+
+    #[test]
+    fn slug_from_url_lowercases() {
+        assert_eq!(
+            slug_from_url("git@github.com:Automattic/WordPress-iOS.git"),
+            Some("wordpress-ios".to_string())
+        );
+    }
+
+    // -- load_repo_config --
+
+    #[test]
+    fn load_repo_config_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let secrets = dir.path().join(SECRETS_DIR);
+        fs::create_dir_all(&secrets).unwrap();
+        fs::write(
+            secrets.join("config.toml"),
+            "repo = \"test-repo\"\n",
+        )
+        .unwrap();
+
+        let config = load_repo_config(dir.path()).unwrap();
+        assert_eq!(config.repo, "test-repo");
+    }
+
+    #[test]
+    fn load_repo_config_missing_file_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = load_repo_config(dir.path());
+        assert!(result.is_err());
+    }
+
+    // -- load_public_keys --
+
+    #[test]
+    fn load_public_keys_filters_comments_and_blanks() {
+        let dir = tempfile::tempdir().unwrap();
+        let secrets = dir.path().join(SECRETS_DIR);
+        fs::create_dir_all(&secrets).unwrap();
+        fs::write(
+            secrets.join("keys.pub"),
+            "# dev\nage1abc\n\n# ci\nage1xyz\n\n",
+        )
+        .unwrap();
+
+        let keys = load_public_keys(dir.path()).unwrap();
+        assert_eq!(keys, vec!["age1abc", "age1xyz"]);
+    }
+
+    #[test]
+    fn load_public_keys_empty_file_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let secrets = dir.path().join(SECRETS_DIR);
+        fs::create_dir_all(&secrets).unwrap();
+        fs::write(secrets.join("keys.pub"), "# only comments\n").unwrap();
+
+        let result = load_public_keys(dir.path());
+        assert!(result.is_err());
+    }
+
+    // -- list_age_files --
+
+    #[test]
+    fn list_age_files_returns_sorted_stems() {
+        let dir = tempfile::tempdir().unwrap();
+        let secrets = dir.path().join(SECRETS_DIR);
+        fs::create_dir_all(&secrets).unwrap();
+        fs::write(secrets.join("z-config.json.age"), b"data").unwrap();
+        fs::write(secrets.join("a-keys.yml.age"), b"data").unwrap();
+        fs::write(secrets.join("config.toml"), b"not an age file").unwrap();
+
+        let files = list_age_files(dir.path()).unwrap();
+        assert_eq!(files, vec!["a-keys.yml", "z-config.json"]);
+    }
+
+    #[test]
+    fn list_age_files_empty_when_no_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let files = list_age_files(dir.path()).unwrap();
+        assert!(files.is_empty());
+    }
+
+    // -- atomic_write --
+
+    #[test]
+    fn atomic_write_creates_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("output.txt");
+
+        atomic_write(&path, b"hello").unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"hello");
+        // Temp file should not remain
+        assert!(!dir.path().join("output.tmp").exists());
+    }
+
+    #[test]
+    fn atomic_write_overwrites_existing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("output.txt");
+        fs::write(&path, b"old").unwrap();
+
+        atomic_write(&path, b"new").unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"new");
+    }
+
+    // -- RepoConfig serialization --
+
+    #[test]
+    fn repo_config_toml_round_trip() {
+        let config = RepoConfig {
+            repo: "my-app".to_string(),
+        };
+        let serialized = toml::to_string_pretty(&config).unwrap();
+        let deserialized: RepoConfig = toml::from_str(&serialized).unwrap();
+        assert_eq!(deserialized.repo, "my-app");
+    }
 }

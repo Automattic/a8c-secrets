@@ -1,20 +1,21 @@
-/// Print the extended man-page-style help and exit.
+/// Print the extended man-page-style manual and exit.
 pub fn print_and_exit() -> ! {
-    print!("{}", HELP_LONG);
+    print!("{}", MANUAL);
     std::process::exit(0);
 }
 
-const HELP_LONG: &str = r#"a8c-secrets — Encrypted secrets management for Automattic mobile repositories
+const MANUAL: &str = r#"a8c-secrets — Encrypted secrets management for Automattic mobile repositories
 
 OVERVIEW
-    a8c-secrets wraps the age encryption library to manage encrypted secret
-    files (API keys, service accounts, certificates) in git repositories.
+    a8c-secrets wraps the `age` encryption library (https://age-encryption.org/v1)
+    to manage encrypted secret files (API keys, service accounts, certificates)
+    in git repositories.
 
     Decrypted secrets live OUTSIDE the repo working tree in ~/.a8c-secrets/,
     protecting them from accidental commits and AI agent access.
 
 TERMINOLOGY
-    a8c-secrets          age equivalent     Format
+    a8c-secrets          `age` equivalent   Format
     ──────────────────   ────────────────   ──────────────────
     private key          identity           AGE-SECRET-KEY-1...
     public key           recipient          age1...
@@ -80,14 +81,14 @@ SMART ENCRYPTION
     existing .age file in memory and compares byte-for-byte with the local
     plaintext. Only files whose content actually changed get re-encrypted.
 
-    This matters because age uses random nonces — encrypting the same content
+    This matters because `age` uses random nonces — encrypting the same content
     twice produces different ciphertext, which would create noisy git diffs.
 
     Use --force to skip comparison and re-encrypt everything (e.g., after
     key rotation when the old key can no longer decrypt).
 
 KEY MANAGEMENT
-    Each repo has two key pairs:
+    Each repo has two `age` key pairs:
 
         dev   Shared by all developers. Private key in Secret Store.
         ci    Used by CI agents (Buildkite). Private key in Buildkite secrets.
@@ -120,7 +121,9 @@ FILES
     ~/.a8c-secrets/<repo>/*        Decrypted secrets (local)
 
 SEE ALSO
-    age specification:   https://age-encryption.org/v1
-    rage (Rust age):     https://github.com/str4d/rage
-    Secret Store:        https://mc.a8c.com/secret-store/
+    `age` specification:     https://age-encryption.org/v1
+    `age` (Go reference):    https://github.com/FiloSottile/age
+    `age` crate (Rust):      https://docs.rs/age/latest/age/
+    rage (Rust `age` CLI):   https://github.com/str4d/rage
+    Secret Store:            https://mc.a8c.com/secret-store/
 "#;

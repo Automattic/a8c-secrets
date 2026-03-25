@@ -2,7 +2,7 @@ mod backend;
 mod cli;
 mod commands;
 mod config;
-mod help_long;
+mod manual;
 mod permissions;
 
 use anyhow::Result;
@@ -29,6 +29,6 @@ fn main() -> Result<()> {
             cli::SetupCommand::Nuke => commands::setup::nuke::run(),
             cli::SetupCommand::Completions(args) => commands::setup::completions::run(args),
         },
-        cli::Command::Manual => help_long::print_and_exit(),
+        cli::Command::Manual => manual::print_and_exit(),
     }
 }

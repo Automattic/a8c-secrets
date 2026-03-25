@@ -1,0 +1,90 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/buildkite/pipeline-schema/main/schema.json
+---
+
+env:
+  IMAGE_ID: "xcode-26.0"
+
+steps:
+  - label: "Lint"
+    agents:
+      queue: default
+    command: |
+      .buildkite/install_build_tools.sh
+      .buildkite/lint.sh
+    notify:
+      - github_commit_status: { context: "Lint" }
+
+  - group: "Test"
+    steps:
+      - label: "Test macOS"
+        key: check-macos
+        agents:
+          queue: mac
+        command: |
+          .buildkite/install_build_tools.sh
+          .buildkite/test.sh
+        notify:
+          - github_commit_status: { context: "Test macOS" }
+
+      - label: "Test Linux"
+        key: check-linux
+        agents:
+          queue: default
+        command: |
+          .buildkite/install_build_tools.sh
+          .buildkite/test.sh
+        notify:
+          - github_commit_status: { context: "Test Linux" }
+
+      - label: "Test Windows"
+        key: check-windows
+        agents:
+          queue: windows
+        command: |
+          bash .buildkite/install_build_tools.sh
+          bash .buildkite/test.sh
+        notify:
+          - github_commit_status: { context: "Test Windows" }
+
+  - group: "Build"
+    if: build.branch == 'main' || build.tag != null
+    steps:
+      - label: "Build macOS"
+        key: build-macos
+        depends_on: check-macos
+        agents:
+          queue: mac
+        command: |
+          .buildkite/install_build_tools.sh
+          .buildkite/build_and_upload_artifact.sh
+        notify:
+          - github_commit_status: { context: "Build macOS" }
+
+      - label: "Build Linux"
+        key: build-linux
+        depends_on: check-linux
+        agents:
+          queue: default
+        command: |
+          .buildkite/install_build_tools.sh
+          .buildkite/build_and_upload_artifact.sh
+        notify:
+          - github_commit_status: { context: "Build Linux" }
+
+      - label: "Build Windows"
+        key: build-windows
+        depends_on: check-windows
+        agents:
+          queue: windows
+        command: |
+          bash .buildkite/install_build_tools.sh
+          bash .buildkite/build_and_upload_artifact.sh .exe
+        notify:
+          - github_commit_status: { context: "Build Windows" }
+
+  - label: "Create GitHub Release"
+    if: build.tag != null
+    depends_on: [build-macos, build-linux, build-windows]
+    agents:
+      queue: default
+    command: .buildkite/create_github_release.sh

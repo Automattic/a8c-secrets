@@ -72,10 +72,7 @@ impl CryptoEngine for AgeCrateEngine {
     fn keygen(&self) -> Result<(SecretString, String)> {
         let secret = age::x25519::Identity::generate();
         let public = secret.to_public();
-        Ok((
-            SecretString::new(secret.to_string().expose_secret().to_string().into()),
-            public.to_string(),
-        ))
+        Ok((secret.to_string(), public.to_string()))
     }
 }
 

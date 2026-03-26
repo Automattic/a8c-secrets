@@ -31,6 +31,9 @@ fn main() -> Result<()> {
             cli::SetupCommand::Nuke => commands::setup::nuke::run(),
             cli::SetupCommand::Completions(args) => commands::setup::completions::run(args),
         },
-        cli::Command::Manual => manual::print_and_exit(),
+        cli::Command::Manual => {
+            manual::print();
+            Ok(())
+        }
     }
 }

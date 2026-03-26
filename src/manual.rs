@@ -1,7 +1,6 @@
-/// Print the extended man-page-style manual and exit.
-pub fn print_and_exit() -> ! {
+/// Print the extended man-page-style manual.
+pub fn print() {
     print!("{}", MANUAL);
-    std::process::exit(0);
 }
 
 const MANUAL: &str = r#"a8c-secrets — Encrypted secrets management for Automattic mobile repositories

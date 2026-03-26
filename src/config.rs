@@ -265,7 +265,7 @@ pub fn atomic_write(path: &Path, content: &[u8]) -> Result<()> {
 /// This is the pure logic extracted for testability; `slug_from_git_remote`
 /// handles the git subprocess call.
 pub fn slug_from_url(url: &str) -> Option<String> {
-    let last_component = url.rsplit('/').next()?;
+    let last_component = url.rsplit(|c| c == '/' || c == ':').next()?;
     let name = last_component
         .strip_suffix(".git")
         .unwrap_or(last_component);
@@ -315,6 +315,14 @@ mod tests {
         assert_eq!(
             slug_from_url("https://github.com/Automattic/MyRepo"),
             Some("myrepo".to_string())
+        );
+    }
+
+    #[test]
+    fn slug_from_ssh_url_without_org() {
+        assert_eq!(
+            slug_from_url("git@github.com:my-repo.git"),
+            Some("my-repo".to_string())
         );
     }
 

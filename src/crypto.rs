@@ -92,13 +92,13 @@ pub fn derive_public_key(private_key: &SecretString) -> Result<String> {
 mod tests {
     use super::*;
 
-    fn backend() -> AgeCrateEngine {
+    fn crypto_engine() -> AgeCrateEngine {
         AgeCrateEngine::new()
     }
 
     #[test]
     fn keygen_produces_valid_key_formats() {
-        let (private, public) = backend().keygen().unwrap();
+        let (private, public) = crypto_engine().keygen().unwrap();
         assert!(
             private.expose_secret().starts_with("AGE-SECRET-KEY-"),
             "private key format"
@@ -108,43 +108,43 @@ mod tests {
 
     #[test]
     fn encrypt_decrypt_round_trip() {
-        let b = backend();
-        let (private, public) = b.keygen().unwrap();
+        let engine = crypto_engine();
+        let (private, public) = engine.keygen().unwrap();
         let plaintext = b"secret data for testing";
 
-        let ciphertext = b.encrypt(plaintext, &[public]).unwrap();
+        let ciphertext = engine.encrypt(plaintext, &[public]).unwrap();
         assert_ne!(ciphertext, plaintext, "ciphertext should differ from plaintext");
 
-        let decrypted = b.decrypt(&ciphertext, &private).unwrap();
+        let decrypted = engine.decrypt(&ciphertext, &private).unwrap();
         assert_eq!(decrypted, plaintext);
     }
 
     #[test]
     fn encrypt_for_multiple_recipients() {
-        let b = backend();
-        let (priv1, pub1) = b.keygen().unwrap();
-        let (priv2, pub2) = b.keygen().unwrap();
+        let engine = crypto_engine();
+        let (priv1, pub1) = engine.keygen().unwrap();
+        let (priv2, pub2) = engine.keygen().unwrap();
         let plaintext = b"shared secret";
 
-        let ciphertext = b.encrypt(plaintext, &[pub1, pub2]).unwrap();
+        let ciphertext = engine.encrypt(plaintext, &[pub1, pub2]).unwrap();
 
         // Both recipients can decrypt
-        assert_eq!(b.decrypt(&ciphertext, &priv1).unwrap(), plaintext);
-        assert_eq!(b.decrypt(&ciphertext, &priv2).unwrap(), plaintext);
+        assert_eq!(engine.decrypt(&ciphertext, &priv1).unwrap(), plaintext);
+        assert_eq!(engine.decrypt(&ciphertext, &priv2).unwrap(), plaintext);
     }
 
     #[test]
     fn decrypt_with_wrong_key_fails() {
-        let b = backend();
-        let (_, pub1) = b.keygen().unwrap();
-        let (_, pub_wrong) = b.keygen().unwrap();
+        let engine = crypto_engine();
+        let (_, pub1) = engine.keygen().unwrap();
+        let (_, pub_wrong) = engine.keygen().unwrap();
 
         // Encrypt for pub1, but derive a fresh wrong private key
-        let ciphertext = b.encrypt(b"secret", &[pub1]).unwrap();
+        let ciphertext = engine.encrypt(b"secret", &[pub1]).unwrap();
 
         // Generate a different key pair and try to decrypt
-        let wrong_private = b.keygen().unwrap().0;
-        let result = b.decrypt(&ciphertext, &wrong_private);
+        let wrong_private = engine.keygen().unwrap().0;
+        let result = engine.decrypt(&ciphertext, &wrong_private);
         assert!(result.is_err());
         // Suppress unused variable warning
         let _ = pub_wrong;
@@ -152,31 +152,31 @@ mod tests {
 
     #[test]
     fn encrypt_empty_recipients_panics() {
-        let b = backend();
+        let engine = crypto_engine();
         // age::Encryptor::with_recipients panics on empty recipients
-        let result = std::panic::catch_unwind(|| b.encrypt(b"data", &[]));
+        let result = std::panic::catch_unwind(|| engine.encrypt(b"data", &[]));
         assert!(result.is_err());
     }
 
     #[test]
     fn encrypt_invalid_recipient_errors() {
-        let b = backend();
-        let result = b.encrypt(b"data", &["not-a-valid-key".to_string()]);
+        let engine = crypto_engine();
+        let result = engine.encrypt(b"data", &["not-a-valid-key".to_string()]);
         assert!(result.is_err());
     }
 
     #[test]
     fn decrypt_invalid_ciphertext_errors() {
-        let b = backend();
-        let (private, _) = b.keygen().unwrap();
-        let result = b.decrypt(b"not valid age ciphertext", &private);
+        let engine = crypto_engine();
+        let (private, _) = engine.keygen().unwrap();
+        let result = engine.decrypt(b"not valid age ciphertext", &private);
         assert!(result.is_err());
     }
 
     #[test]
     fn derive_public_key_matches_keygen() {
-        let b = backend();
-        let (private, public) = b.keygen().unwrap();
+        let engine = crypto_engine();
+        let (private, public) = engine.keygen().unwrap();
         let derived = derive_public_key(&private).unwrap();
         assert_eq!(derived, public);
     }
@@ -189,12 +189,12 @@ mod tests {
 
     #[test]
     fn encrypt_produces_different_ciphertext_each_time() {
-        let b = backend();
-        let (_, public) = b.keygen().unwrap();
+        let engine = crypto_engine();
+        let (_, public) = engine.keygen().unwrap();
         let plaintext = b"same content";
 
-        let ct1 = b.encrypt(plaintext, &[public.clone()]).unwrap();
-        let ct2 = b.encrypt(plaintext, &[public]).unwrap();
+        let ct1 = engine.encrypt(plaintext, &[public.clone()]).unwrap();
+        let ct2 = engine.encrypt(plaintext, &[public]).unwrap();
         assert_ne!(ct1, ct2, "age uses random nonces, so ciphertext should differ");
     }
 }

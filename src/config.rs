@@ -2,6 +2,8 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+use crate::permissions;
+
 /// Name of the in-repo config directory.
 pub const SECRETS_DIR: &str = ".a8c-secrets";
 
@@ -73,6 +75,34 @@ pub fn get_private_key(repo_slug: &str) -> Result<String> {
                 path.display()
             )
         })
+}
+
+/// Metadata about a private key save operation.
+pub struct SavedPrivateKey {
+    pub path: PathBuf,
+    pub existed: bool,
+}
+
+/// Validate and securely save a private key for the given repo.
+pub fn save_private_key(repo_slug: &str, private_key: &str) -> Result<SavedPrivateKey> {
+    if !private_key.starts_with("AGE-SECRET-KEY-") {
+        anyhow::bail!("Invalid private key format. Expected AGE-SECRET-KEY-...");
+    }
+
+    let key_path = private_key_path(repo_slug)?;
+    if let Some(parent) = key_path.parent() {
+        std::fs::create_dir_all(parent)?;
+        permissions::set_secure_dir_permissions(parent)?;
+    }
+
+    let existed = key_path.exists();
+    std::fs::write(&key_path, format!("{private_key}\n"))?;
+    permissions::set_secure_file_permissions(&key_path)?;
+
+    Ok(SavedPrivateKey {
+        path: key_path,
+        existed,
+    })
 }
 
 /// Read public keys from `.a8c-secrets/keys.pub`, filtering out comment lines and blanks.

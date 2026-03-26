@@ -82,20 +82,8 @@ fn prompt_for_key(slug: &str) -> Result<String> {
     io::stdin().read_line(&mut key)?;
     let key = key.trim().to_string();
 
-    if !key.starts_with("AGE-SECRET-KEY-") {
-        anyhow::bail!("Invalid private key format. Expected AGE-SECRET-KEY-...");
-    }
-
-    // Save the key
-    let key_path = config::private_key_path(slug)?;
-    if let Some(parent) = key_path.parent() {
-        std::fs::create_dir_all(parent)?;
-        permissions::set_secure_dir_permissions(parent)?;
-    }
-    std::fs::write(&key_path, format!("{key}\n"))?;
-    permissions::set_secure_file_permissions(&key_path)?;
-
-    println!("Saved to {}", key_path.display());
+    let saved_key = config::save_private_key(slug, &key)?;
+    println!("Saved to {}", saved_key.path.display());
     println!();
 
     Ok(key)

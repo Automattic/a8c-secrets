@@ -33,7 +33,13 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: EditArgs) -> Result<()> {
     let before = std::fs::read(&local_path)?;
 
     // Open in $EDITOR
-    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
+    let editor = std::env::var("EDITOR").unwrap_or_else(|_| {
+        if cfg!(windows) {
+            "notepad".to_string()
+        } else {
+            "vi".to_string()
+        }
+    });
     let status = std::process::Command::new(&editor)
         .arg(&local_path)
         .status()

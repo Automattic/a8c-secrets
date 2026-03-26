@@ -2,14 +2,14 @@ use std::io::{self, Write};
 
 use anyhow::Result;
 
-use crate::config::{self, SECRETS_DIR};
+use crate::config::{self, REPO_SECRETS_DIR};
 
 pub fn run() -> Result<()> {
     let repo_root = config::find_repo_root()?;
     let repo_config = config::load_repo_config(&repo_root)?;
     let slug = &repo_config.repo;
 
-    let secrets_dir = repo_root.join(SECRETS_DIR);
+    let secrets_dir = repo_root.join(REPO_SECRETS_DIR);
     let key_path = config::private_key_path(slug)?;
     let decrypted = config::decrypted_dir(slug)?;
 
@@ -55,7 +55,7 @@ pub fn run() -> Result<()> {
     println!("Reminders:");
     println!("  - Remove the Secret Store entry (a8c-secrets/{slug}) if no longer needed");
     println!("  - Remove the Buildkite A8C_SECRETS_IDENTITY secret if applicable");
-    println!("  - Commit the deletion of {SECRETS_DIR}/");
+    println!("  - Commit the deletion of {REPO_SECRETS_DIR}/");
 
     Ok(())
 }

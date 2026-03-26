@@ -5,12 +5,18 @@ use std::path::{Path, PathBuf};
 use crate::permissions;
 
 /// Name of the in-repo config directory.
-pub const SECRETS_DIR: &str = ".a8c-secrets";
+pub const REPO_SECRETS_DIR: &str = ".a8c-secrets";
+/// Name of the local home directory used to store private/decrypted secrets.
+pub const HOME_SECRETS_DIR: &str = ".a8c-secrets";
 
 /// Contents of `.a8c-secrets/config.toml`.
 #[derive(Deserialize, Serialize)]
 pub struct RepoConfig {
     pub repo: String,
+}
+
+fn repo_config_path(dir: &Path) -> PathBuf {
+    dir.join(REPO_SECRETS_DIR).join("config.toml")
 }
 
 /// Locate the repo root by walking up from the current directory
@@ -19,18 +25,24 @@ pub fn find_repo_root() -> Result<PathBuf> {
     let cwd = std::env::current_dir().context("Failed to get current directory")?;
     let mut dir = cwd.as_path();
     loop {
-        if dir.join(".a8c-secrets/config.toml").exists() {
+        if repo_config_path(dir).exists() {
             return Ok(dir.to_path_buf());
         }
         dir = dir
             .parent()
-            .with_context(|| format!("No .a8c-secrets/config.toml found in any parent of {}", cwd.display()))?;
+            .with_context(|| {
+                format!(
+                    "No {}/config.toml found in any parent of {}",
+                    REPO_SECRETS_DIR,
+                    cwd.display()
+                )
+            })?;
     }
 }
 
 /// Load the repo config from `.a8c-secrets/config.toml`.
 pub fn load_repo_config(repo_root: &Path) -> Result<RepoConfig> {
-    let path = repo_root.join(".a8c-secrets/config.toml");
+    let path = repo_config_path(repo_root);
     let content = std::fs::read_to_string(&path)
         .with_context(|| format!("Failed to read {}", path.display()))?;
     let config: RepoConfig = toml::from_str(&content)
@@ -41,7 +53,7 @@ pub fn load_repo_config(repo_root: &Path) -> Result<RepoConfig> {
 /// Path to the local secrets home directory.
 pub fn secrets_home() -> Result<PathBuf> {
     let home = dirs::home_dir().context("Could not determine home directory")?;
-    Ok(home.join(".a8c-secrets"))
+    Ok(home.join(HOME_SECRETS_DIR))
 }
 
 /// Path to the private key file for a given repo slug.
@@ -107,7 +119,7 @@ pub fn save_private_key(repo_slug: &str, private_key: &str) -> Result<SavedPriva
 
 /// Read public keys from `.a8c-secrets/keys.pub`, filtering out comment lines and blanks.
 pub fn load_public_keys(repo_root: &Path) -> Result<Vec<String>> {
-    let path = repo_root.join(format!("{SECRETS_DIR}/keys.pub"));
+    let path = repo_root.join(REPO_SECRETS_DIR).join("keys.pub");
     let content = std::fs::read_to_string(&path)
         .with_context(|| format!("Failed to read {}", path.display()))?;
     let keys: Vec<String> = content
@@ -124,7 +136,7 @@ pub fn load_public_keys(repo_root: &Path) -> Result<Vec<String>> {
 
 /// List `.age` file stems in `.a8c-secrets/` (e.g. "google-services.json" from "google-services.json.age").
 pub fn list_age_files(repo_root: &Path) -> Result<Vec<String>> {
-    let dir = repo_root.join(SECRETS_DIR);
+    let dir = repo_root.join(REPO_SECRETS_DIR);
     let mut names = Vec::new();
     if !dir.exists() {
         return Ok(names);
@@ -239,7 +251,7 @@ mod tests {
     #[test]
     fn load_repo_config_round_trip() {
         let dir = tempfile::tempdir().unwrap();
-        let secrets = dir.path().join(SECRETS_DIR);
+        let secrets = dir.path().join(REPO_SECRETS_DIR);
         fs::create_dir_all(&secrets).unwrap();
         fs::write(
             secrets.join("config.toml"),
@@ -263,7 +275,7 @@ mod tests {
     #[test]
     fn load_public_keys_filters_comments_and_blanks() {
         let dir = tempfile::tempdir().unwrap();
-        let secrets = dir.path().join(SECRETS_DIR);
+        let secrets = dir.path().join(REPO_SECRETS_DIR);
         fs::create_dir_all(&secrets).unwrap();
         fs::write(
             secrets.join("keys.pub"),
@@ -278,7 +290,7 @@ mod tests {
     #[test]
     fn load_public_keys_empty_file_errors() {
         let dir = tempfile::tempdir().unwrap();
-        let secrets = dir.path().join(SECRETS_DIR);
+        let secrets = dir.path().join(REPO_SECRETS_DIR);
         fs::create_dir_all(&secrets).unwrap();
         fs::write(secrets.join("keys.pub"), "# only comments\n").unwrap();
 
@@ -291,7 +303,7 @@ mod tests {
     #[test]
     fn list_age_files_returns_sorted_stems() {
         let dir = tempfile::tempdir().unwrap();
-        let secrets = dir.path().join(SECRETS_DIR);
+        let secrets = dir.path().join(REPO_SECRETS_DIR);
         fs::create_dir_all(&secrets).unwrap();
         fs::write(secrets.join("z-config.json.age"), b"data").unwrap();
         fs::write(secrets.join("a-keys.yml.age"), b"data").unwrap();

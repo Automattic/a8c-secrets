@@ -2,13 +2,13 @@ use std::io::{self, Write};
 
 use anyhow::{Context, Result};
 
-use crate::config::{self, SECRETS_DIR};
+use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::CryptoEngine;
 use crate::permissions;
 
 pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     let cwd = std::env::current_dir().context("Failed to get current directory")?;
-    let secrets_dir = cwd.join(SECRETS_DIR);
+    let secrets_dir = cwd.join(REPO_SECRETS_DIR);
 
     if secrets_dir.join("config.toml").exists() {
         anyhow::bail!(

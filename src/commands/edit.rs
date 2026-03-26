@@ -3,7 +3,7 @@ use std::io::{self, Write};
 use anyhow::{Context, Result};
 
 use crate::cli::EditArgs;
-use crate::config::{self, SECRETS_DIR};
+use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::CryptoEngine;
 
 pub fn run(crypto_engine: &dyn CryptoEngine, args: EditArgs) -> Result<()> {
@@ -53,11 +53,13 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: EditArgs) -> Result<()> {
 
     // Encrypt the changed file
     let ciphertext = crypto_engine.encrypt(&after, &public_keys)?;
-    let age_path = repo_root.join(SECRETS_DIR).join(format!("{}.age", args.file));
+    let age_path = repo_root
+        .join(REPO_SECRETS_DIR)
+        .join(format!("{}.age", args.file));
     config::atomic_write(&age_path, &ciphertext)?;
 
     println!("Encrypted {}", args.file);
-    println!("Remember to commit {}/{}.age", SECRETS_DIR, args.file);
+    println!("Remember to commit {}/{}.age", REPO_SECRETS_DIR, args.file);
 
     Ok(())
 }

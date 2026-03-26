@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use crate::config;
+use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::derive_public_key;
 
 pub fn run() -> Result<()> {
@@ -35,7 +35,7 @@ pub fn run() -> Result<()> {
     println!();
 
     // Read keys.pub with comments for labels
-    let keys_pub_path = repo_root.join(".a8c-secrets/keys.pub");
+    let keys_pub_path = repo_root.join(REPO_SECRETS_DIR).join("keys.pub");
     let content = std::fs::read_to_string(&keys_pub_path)?;
 
     println!("Public keys ({}):", keys_pub_path.display());

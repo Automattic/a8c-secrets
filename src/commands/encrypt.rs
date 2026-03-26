@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 
 use crate::cli::EncryptArgs;
-use crate::config::{self, SECRETS_DIR};
+use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::CryptoEngine;
 
 pub fn run(crypto_engine: &dyn CryptoEngine, args: EncryptArgs) -> Result<()> {
@@ -11,7 +11,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: EncryptArgs) -> Result<()> {
 
     let public_keys = config::load_public_keys(&repo_root)?;
 
-    let secrets_dir = repo_root.join(SECRETS_DIR);
+    let secrets_dir = repo_root.join(REPO_SECRETS_DIR);
     let local_dir = config::decrypted_dir(slug)?;
 
     if !local_dir.exists() {
@@ -111,7 +111,10 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: EncryptArgs) -> Result<()> {
         "Encrypted {encrypted_count} file(s), skipped {skipped_count} unchanged."
     );
     if encrypted_count > 0 {
-        println!("Remember to commit the .age file(s) in {}/", SECRETS_DIR);
+        println!(
+            "Remember to commit the .age file(s) in {}/",
+            REPO_SECRETS_DIR
+        );
     }
 
     Ok(())

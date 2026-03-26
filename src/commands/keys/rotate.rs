@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 
 use crate::cli::RotateArgs;
-use crate::config::{self, SECRETS_DIR};
+use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::{derive_public_key, CryptoEngine};
 
 pub fn run(crypto_engine: &dyn CryptoEngine, args: RotateArgs) -> Result<()> {
@@ -45,7 +45,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: RotateArgs) -> Result<()> {
     };
 
     // Rewrite keys.pub with comments
-    let keys_pub_path = repo_root.join(format!("{SECRETS_DIR}/keys.pub"));
+    let keys_pub_path = repo_root.join(REPO_SECRETS_DIR).join("keys.pub");
     std::fs::write(
         &keys_pub_path,
         format!("# dev\n{dev_key}\n# ci\n{ci_key}\n"),
@@ -53,7 +53,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: RotateArgs) -> Result<()> {
 
     // Re-encrypt all .age files with the updated public keys
     let age_files = config::list_age_files(&repo_root)?;
-    let secrets_dir = repo_root.join(SECRETS_DIR);
+    let secrets_dir = repo_root.join(REPO_SECRETS_DIR);
 
     // We need a working private key to decrypt. After dev rotation, the OLD
     // private key still works because we haven't replaced the .age files yet.

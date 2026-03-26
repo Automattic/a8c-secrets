@@ -3,7 +3,7 @@ use std::io::{self, Write};
 use anyhow::Result;
 
 use crate::cli::RmArgs;
-use crate::config::{self, SECRETS_DIR};
+use crate::config::{self, REPO_SECRETS_DIR};
 
 pub fn run(args: RmArgs) -> Result<()> {
     let repo_root = config::find_repo_root()?;
@@ -11,7 +11,9 @@ pub fn run(args: RmArgs) -> Result<()> {
     let slug = &repo_config.repo;
 
     let local_path = config::decrypted_dir(slug)?.join(&args.file);
-    let age_path = repo_root.join(SECRETS_DIR).join(format!("{}.age", args.file));
+    let age_path = repo_root
+        .join(REPO_SECRETS_DIR)
+        .join(format!("{}.age", args.file));
 
     let local_exists = local_path.exists();
     let age_exists = age_path.exists();
@@ -47,7 +49,11 @@ pub fn run(args: RmArgs) -> Result<()> {
 
     println!("Removed '{}'.", args.file);
     if age_exists {
-        println!("Remember to commit the deletion of {}/{}.age", SECRETS_DIR, args.file);
+        println!(
+            "Remember to commit the deletion of {}/{}.age",
+            REPO_SECRETS_DIR,
+            args.file
+        );
     }
 
     Ok(())

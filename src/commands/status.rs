@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use anyhow::Result;
 
-use crate::config::{self, SECRETS_DIR};
+use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::{derive_public_key, CryptoEngine};
 
 pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
@@ -46,7 +46,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
         return Ok(());
     }
 
-    let secrets_dir = repo_root.join(SECRETS_DIR);
+    let secrets_dir = repo_root.join(REPO_SECRETS_DIR);
     let local_dir = config::decrypted_dir(slug)?;
 
     println!("Files:");

@@ -3,7 +3,7 @@ use std::io::{self, IsTerminal, Write};
 use anyhow::{Context, Result};
 
 use crate::cli::DecryptArgs;
-use crate::config::{self, SECRETS_DIR};
+use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::CryptoEngine;
 use crate::permissions;
 
@@ -24,7 +24,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: DecryptArgs) -> Result<()> {
     let age_files = config::list_age_files(&repo_root)?;
 
     if age_files.is_empty() {
-        println!("No .age files found in {}/", SECRETS_DIR);
+        println!("No .age files found in {}/", REPO_SECRETS_DIR);
         return Ok(());
     }
 
@@ -32,7 +32,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: DecryptArgs) -> Result<()> {
     let out_dir = config::decrypted_dir(slug)?;
     std::fs::create_dir_all(&out_dir)?;
 
-    let secrets_dir = repo_root.join(SECRETS_DIR);
+    let secrets_dir = repo_root.join(REPO_SECRETS_DIR);
     let mut decrypted_count = 0;
 
     for name in &age_files {

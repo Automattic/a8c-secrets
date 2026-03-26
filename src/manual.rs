@@ -110,7 +110,7 @@ ENVIRONMENT VARIABLES
         is treated as a file path. Intended for CI environments.
 
     EDITOR
-        Editor for the `edit` command. Default: vi.
+        Editor for the `edit` command. Default: vi (Unix) or notepad (Windows).
 
 FILES
     .a8c-secrets/config.toml       Repo slug (committed)

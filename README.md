@@ -100,7 +100,7 @@ On employee offboarding:
 | Variable | Description |
 |---|---|
 | `A8C_SECRETS_IDENTITY` | Private key override. If value starts with `AGE-SECRET-KEY-`, used directly in memory. Otherwise treated as a file path. Intended for CI. |
-| `EDITOR` | Editor for the `edit` command. Default: `vi`. |
+| `EDITOR` | Editor for the `edit` command. Default: `vi` (Unix) or `notepad` (Windows). |
 
 ## Development
 

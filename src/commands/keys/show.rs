@@ -3,6 +3,12 @@ use anyhow::Result;
 use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::derive_public_key;
 
+/// Display local/private key status and repository public keys.
+///
+/// # Errors
+///
+/// Returns an error if repo/config discovery fails or `keys.pub` cannot be
+/// read.
 pub fn run() -> Result<()> {
     let repo_root = config::find_repo_root()?;
     let repo_config = config::load_repo_config(&repo_root)?;

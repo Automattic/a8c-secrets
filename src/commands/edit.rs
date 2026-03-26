@@ -14,6 +14,13 @@ fn default_editor() -> String {
     }
 }
 
+/// Open a local secret file in an editor and re-encrypt if it changed.
+///
+/// # Errors
+///
+/// Returns an error if repo/config discovery fails, file IO fails, launching
+/// the editor fails, the editor exits unsuccessfully, or encryption/write
+/// operations fail.
 pub fn run(crypto_engine: &dyn CryptoEngine, args: EditArgs) -> Result<()> {
     let repo_root = config::find_repo_root()?;
     let repo_config = config::load_repo_config(&repo_root)?;

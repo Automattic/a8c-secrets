@@ -7,6 +7,12 @@ use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::CryptoEngine;
 use crate::permissions;
 
+/// Initialize `a8c-secrets` in the current repository.
+///
+/// # Errors
+///
+/// Returns an error if initialization paths cannot be created, user input
+/// fails, key generation fails, or config/key files cannot be written.
 pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     let cwd = std::env::current_dir().context("Failed to get current directory")?;
     let secrets_dir = cwd.join(REPO_SECRETS_DIR);

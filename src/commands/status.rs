@@ -9,6 +9,12 @@ fn collect_all_files(age_files: &BTreeSet<String>, local_files: &BTreeSet<String
     age_files.union(local_files).cloned().collect()
 }
 
+/// Show key status and sync state for all known secret files.
+///
+/// # Errors
+///
+/// Returns an error if repo/config discovery fails, file lists cannot be read,
+/// file contents cannot be read, or decrypt/compare operations fail.
 pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     let repo_root = config::find_repo_root()?;
     let repo_config = config::load_repo_config(&repo_root)?;

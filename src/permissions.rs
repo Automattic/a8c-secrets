@@ -65,6 +65,10 @@ compile_error!("a8c-secrets requires Unix or Windows for file permission managem
 // --- Public API ---
 
 /// Set secure permissions on a directory (0o700 on Unix, owner-only DACL on Windows).
+///
+/// # Errors
+///
+/// Returns an error if the platform-specific permission update fails.
 pub fn set_secure_dir_permissions(path: &Path) -> Result<()> {
     #[cfg(unix)]
     {
@@ -77,6 +81,10 @@ pub fn set_secure_dir_permissions(path: &Path) -> Result<()> {
 }
 
 /// Set secure permissions on a file (0o600 on Unix, owner-only DACL on Windows).
+///
+/// # Errors
+///
+/// Returns an error if the platform-specific permission update fails.
 pub fn set_secure_file_permissions(path: &Path) -> Result<()> {
     #[cfg(unix)]
     {

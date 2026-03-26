@@ -5,6 +5,12 @@ use anyhow::Result;
 use crate::cli::RmArgs;
 use crate::config::{self, REPO_SECRETS_DIR};
 
+/// Remove a secret file from both local plaintext storage and repo ciphertext.
+///
+/// # Errors
+///
+/// Returns an error if repo/config discovery fails, the file cannot be found,
+/// user-selected deletions fail, or user input cannot be read.
 pub fn run(args: RmArgs) -> Result<()> {
     let repo_root = config::find_repo_root()?;
     let repo_config = config::load_repo_config(&repo_root)?;

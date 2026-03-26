@@ -15,6 +15,13 @@ fn compute_orphans(local_files: &[String], age_files: &[String]) -> Vec<String> 
         .collect()
 }
 
+/// Decrypt all repository `.age` files into the local decrypted directory.
+///
+/// # Errors
+///
+/// Returns an error if repo/config discovery fails, key resolution/import fails,
+/// encrypted files cannot be read/decrypted, output files cannot be written, or
+/// orphan cleanup fails.
 pub fn run(crypto_engine: &dyn CryptoEngine, args: DecryptArgs) -> Result<()> {
     let interactive = !args.non_interactive && io::stdin().is_terminal();
 

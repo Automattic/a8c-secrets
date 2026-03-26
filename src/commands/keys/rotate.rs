@@ -18,6 +18,12 @@ fn identify_dev_ci_indices(public_keys: &[String], derived_public: &str) -> Resu
     Ok((dev_idx, ci_idx))
 }
 
+/// Rotate either the dev or CI key and re-encrypt all repository secrets.
+///
+/// # Errors
+///
+/// Returns an error if repo/config/key discovery fails, key matching is
+/// invalid, or re-encryption reads/writes fail.
 pub fn run(crypto_engine: &dyn CryptoEngine, args: RotateArgs) -> Result<()> {
     let repo_root = config::find_repo_root()?;
     let repo_config = config::load_repo_config(&repo_root)?;

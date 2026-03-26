@@ -20,6 +20,13 @@ fn collect_missing_local_warnings(
         .collect()
 }
 
+/// Encrypt local plaintext secret files back into repository `.age` files.
+///
+/// # Errors
+///
+/// Returns an error if repo/config discovery fails, target files are invalid or
+/// unreadable, required key material is unavailable, encryption fails, or
+/// output files cannot be written.
 pub fn run(crypto_engine: &dyn CryptoEngine, args: EncryptArgs) -> Result<()> {
     let repo_root = config::find_repo_root()?;
     let repo_config = config::load_repo_config(&repo_root)?;

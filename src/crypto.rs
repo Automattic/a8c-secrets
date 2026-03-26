@@ -79,7 +79,14 @@ impl CryptoEngine for AgeCrateEngine {
     }
 }
 
-/// Derive the public key from a private key string.
+/// Derive the public key from a private key.
+///
+/// This is used to identify which entry in `keys.pub` matches a local private
+/// key (for example in `keys show`, `status`, and key rotation flows).
+///
+/// # Errors
+///
+/// Returns an error if the private key cannot be parsed.
 pub fn derive_public_key(private_key: &SecretString) -> Result<String> {
     let identity: age::x25519::Identity = private_key
         .expose_secret()

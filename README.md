@@ -118,4 +118,3 @@ make build-release # Build release binary
 - [`age` Rust crate docs](https://docs.rs/age/latest/age/)
 - [rage (Rust `age` CLI)](https://github.com/str4d/rage)
 - [Secret Store](https://mc.a8c.com/secret-store/)
-- [Design brainstorming session](https://claude.ai/share/80b4a3f5-ef8a-40b2-80a4-a7e7ee990cee)

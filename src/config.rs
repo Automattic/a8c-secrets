@@ -23,6 +23,11 @@ fn repo_config_path(dir: &Path) -> PathBuf {
 
 /// Locate the repo root by walking up from the current directory
 /// looking for a `.a8c-secrets/config.toml`.
+///
+/// # Errors
+///
+/// Returns an error if the current directory cannot be read or no repo config
+/// is found in the current directory or any parent.
 pub fn find_repo_root() -> Result<PathBuf> {
     let cwd = std::env::current_dir().context("Failed to get current directory")?;
     let mut dir = cwd.as_path();
@@ -43,6 +48,10 @@ pub fn find_repo_root() -> Result<PathBuf> {
 }
 
 /// Load the repo config from `.a8c-secrets/config.toml`.
+///
+/// # Errors
+///
+/// Returns an error if the config file cannot be read or parsed as TOML.
 pub fn load_repo_config(repo_root: &Path) -> Result<RepoConfig> {
     let path = repo_config_path(repo_root);
     let content = std::fs::read_to_string(&path)
@@ -53,23 +62,40 @@ pub fn load_repo_config(repo_root: &Path) -> Result<RepoConfig> {
 }
 
 /// Path to the local secrets home directory.
+///
+/// # Errors
+///
+/// Returns an error if the user's home directory cannot be determined.
 pub fn secrets_home() -> Result<PathBuf> {
     let home = dirs::home_dir().context("Could not determine home directory")?;
     Ok(home.join(HOME_SECRETS_DIR))
 }
 
 /// Path to the private key file for a given repo slug.
+///
+/// # Errors
+///
+/// Returns an error if the local secrets home directory cannot be determined.
 pub fn private_key_path(repo_slug: &str) -> Result<PathBuf> {
     Ok(secrets_home()?.join("keys").join(format!("{repo_slug}.key")))
 }
 
 /// Path to the decrypted secrets directory for a given repo slug.
+///
+/// # Errors
+///
+/// Returns an error if the local secrets home directory cannot be determined.
 pub fn decrypted_dir(repo_slug: &str) -> Result<PathBuf> {
     Ok(secrets_home()?.join(repo_slug))
 }
 
 /// Read the private key, checking `A8C_SECRETS_IDENTITY` env var first,
 /// then falling back to the key file on disk.
+///
+/// # Errors
+///
+/// Returns an error if the env var points to an unreadable file, if the key
+/// file cannot be read, or if no key is configured.
 pub fn get_private_key(repo_slug: &str) -> Result<SecretString> {
     if let Ok(val) = std::env::var("A8C_SECRETS_IDENTITY") {
         if val.starts_with("AGE-SECRET-KEY-") {
@@ -92,6 +118,11 @@ pub fn get_private_key(repo_slug: &str) -> Result<SecretString> {
 }
 
 /// Validate and securely save a private key for the given repo.
+///
+/// # Errors
+///
+/// Returns an error if the key format is invalid, key directories cannot be
+/// created, permissions cannot be set, or the key file cannot be written.
 pub fn save_private_key(repo_slug: &str, private_key: &SecretString) -> Result<PathBuf> {
     if !private_key.expose_secret().starts_with("AGE-SECRET-KEY-") {
         anyhow::bail!("Invalid private key format. Expected AGE-SECRET-KEY-...");
@@ -113,6 +144,11 @@ pub fn save_private_key(repo_slug: &str, private_key: &SecretString) -> Result<P
 ///
 /// Prints guidance, reads the key without terminal echo, writes it securely,
 /// and reports whether the key was newly saved or updated.
+///
+/// # Errors
+///
+/// Returns an error if terminal input fails, key validation fails, or key
+/// persistence fails.
 pub fn prompt_and_import_private_key(slug: &str) -> Result<SecretString> {
     println!("Import private key for '{slug}'");
     println!();
@@ -142,6 +178,10 @@ pub fn prompt_and_import_private_key(slug: &str) -> Result<SecretString> {
 }
 
 /// Read public keys from `.a8c-secrets/keys.pub`, filtering out comment lines and blanks.
+///
+/// # Errors
+///
+/// Returns an error if `keys.pub` cannot be read or contains no usable keys.
 pub fn load_public_keys(repo_root: &Path) -> Result<Vec<String>> {
     let path = repo_root.join(REPO_SECRETS_DIR).join("keys.pub");
     let content = std::fs::read_to_string(&path)
@@ -159,6 +199,10 @@ pub fn load_public_keys(repo_root: &Path) -> Result<Vec<String>> {
 }
 
 /// List `.age` file stems in `.a8c-secrets/` (e.g. "google-services.json" from "google-services.json.age").
+///
+/// # Errors
+///
+/// Returns an error if the secrets directory exists but cannot be read.
 pub fn list_age_files(repo_root: &Path) -> Result<Vec<String>> {
     let dir = repo_root.join(REPO_SECRETS_DIR);
     let mut names = Vec::new();
@@ -177,6 +221,10 @@ pub fn list_age_files(repo_root: &Path) -> Result<Vec<String>> {
 }
 
 /// List plaintext files in `~/.a8c-secrets/<repo>/`.
+///
+/// # Errors
+///
+/// Returns an error if the local decrypted directory exists but cannot be read.
 pub fn list_local_files(repo_slug: &str) -> Result<Vec<String>> {
     let dir = decrypted_dir(repo_slug)?;
     let mut names = Vec::new();
@@ -194,6 +242,13 @@ pub fn list_local_files(repo_slug: &str) -> Result<Vec<String>> {
 }
 
 /// Write content atomically: write to a temp file then rename.
+///
+/// Temporary files are created in the destination's parent directory so secret
+/// material never spills into a global temp directory.
+///
+/// # Errors
+///
+/// Returns an error if the temp file cannot be created, written, or persisted.
 pub fn atomic_write(path: &Path, content: &[u8]) -> Result<()> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let mut tmp = tempfile::NamedTempFile::new_in(parent)

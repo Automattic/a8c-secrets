@@ -84,8 +84,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &RotateArgs) -> Result<()> {
 
     // If rotating dev, save the new private key locally
     if args.dev {
-        let key_path = config::private_key_path(slug)?;
-        std::fs::write(&key_path, format!("{}\n", new_private.expose_secret()))?;
+        let key_path = config::save_private_key(slug, &new_private)?;
         println!();
         println!("Updated local private key at {}", key_path.display());
     }

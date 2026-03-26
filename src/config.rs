@@ -91,14 +91,8 @@ pub fn get_private_key(repo_slug: &str) -> Result<SecretString> {
         })
 }
 
-/// Metadata about a private key save operation.
-pub struct SavedPrivateKey {
-    pub path: PathBuf,
-    pub existed: bool,
-}
-
 /// Validate and securely save a private key for the given repo.
-pub fn save_private_key(repo_slug: &str, private_key: &SecretString) -> Result<SavedPrivateKey> {
+pub fn save_private_key(repo_slug: &str, private_key: &SecretString) -> Result<PathBuf> {
     if !private_key.expose_secret().starts_with("AGE-SECRET-KEY-") {
         anyhow::bail!("Invalid private key format. Expected AGE-SECRET-KEY-...");
     }
@@ -109,14 +103,42 @@ pub fn save_private_key(repo_slug: &str, private_key: &SecretString) -> Result<S
         permissions::set_secure_dir_permissions(parent)?;
     }
 
-    let existed = key_path.exists();
     std::fs::write(&key_path, format!("{}\n", private_key.expose_secret()))?;
     permissions::set_secure_file_permissions(&key_path)?;
 
-    Ok(SavedPrivateKey {
-        path: key_path,
-        existed,
-    })
+    Ok(key_path)
+}
+
+/// Prompt the user to import a private key from Secret Store.
+///
+/// Prints guidance, reads the key without terminal echo, writes it securely,
+/// and reports whether the key was newly saved or updated.
+pub fn prompt_and_import_private_key(slug: &str) -> Result<SecretString> {
+    println!("Import private key for '{slug}'");
+    println!();
+    println!("Get the dev private key from Secret Store:");
+    println!("  https://mc.a8c.com/secret-store/  (look for: a8c-secrets/{slug})");
+    println!();
+
+    let key = SecretString::new(
+        rpassword::prompt_password("Paste private key: ")?
+            .trim()
+            .to_string()
+            .into(),
+    );
+
+    let key_path = private_key_path(slug)?;
+    let existed = key_path.exists();
+    let saved_path = save_private_key(slug, &key)?;
+
+    if existed {
+        println!("Updated {}", saved_path.display());
+    } else {
+        println!("Saved to {}", saved_path.display());
+    }
+    println!();
+
+    Ok(key)
 }
 
 /// Read public keys from `.a8c-secrets/keys.pub`, filtering out comment lines and blanks.

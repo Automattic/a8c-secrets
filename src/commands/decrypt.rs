@@ -1,6 +1,5 @@
 use std::io::{self, IsTerminal, Write};
 
-use age::secrecy::SecretString;
 use anyhow::{Context, Result};
 
 use crate::cli::DecryptArgs;
@@ -18,7 +17,10 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: DecryptArgs) -> Result<()> {
     // Get or prompt for private key
     let private_key = match config::get_private_key(slug) {
         Ok(key) => key,
-        Err(_) if interactive => prompt_for_key(slug)?,
+        Err(_) if interactive => {
+            println!("No private key found for '{slug}'.");
+            config::prompt_and_import_private_key(slug)?
+        }
         Err(e) => return Err(e),
     };
 
@@ -67,22 +69,6 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: DecryptArgs) -> Result<()> {
     handle_orphans(slug, &age_files, interactive)?;
 
     Ok(())
-}
-
-/// Prompt the user to paste their private key (first-run experience).
-fn prompt_for_key(slug: &str) -> Result<SecretString> {
-    println!("No private key found for '{slug}'.");
-    println!();
-    println!("Get the dev private key from Secret Store:");
-    println!("  https://mc.a8c.com/secret-store/  (look for: a8c-secrets/{slug})");
-    println!();
-    let key = SecretString::new(rpassword::prompt_password("Paste private key: ")?.trim().to_string().into());
-
-    let saved_key = config::save_private_key(slug, &key)?;
-    println!("Saved to {}", saved_key.path.display());
-    println!();
-
-    Ok(key)
 }
 
 /// Detect and handle orphan files (local plaintext with no .age counterpart).

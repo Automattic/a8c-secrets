@@ -5,6 +5,19 @@ use crate::cli::RotateArgs;
 use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::{derive_public_key, CryptoEngine};
 
+fn identify_dev_ci_indices(public_keys: &[String], derived_public: &str) -> Result<(usize, usize)> {
+    if public_keys.len() != 2 {
+        anyhow::bail!("Expected exactly 2 public keys in keys.pub, found {}", public_keys.len());
+    }
+
+    let dev_idx = public_keys
+        .iter()
+        .position(|pk| pk == derived_public)
+        .context("Local private key does not match any key in keys.pub. Import the correct key first.")?;
+    let ci_idx = if dev_idx == 0 { 1 } else { 0 };
+    Ok((dev_idx, ci_idx))
+}
+
 pub fn run(crypto_engine: &dyn CryptoEngine, args: RotateArgs) -> Result<()> {
     let repo_root = config::find_repo_root()?;
     let repo_config = config::load_repo_config(&repo_root)?;
@@ -15,15 +28,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: RotateArgs) -> Result<()> {
     let public_keys = config::load_public_keys(&repo_root)?;
 
     // Identify which key is dev (matches local private key) and which is ci
-    let dev_idx = public_keys
-        .iter()
-        .position(|pk| pk == &derived_public)
-        .context("Local private key does not match any key in keys.pub. Import the correct key first.")?;
-    let ci_idx = if dev_idx == 0 { 1 } else { 0 };
-
-    if public_keys.len() != 2 {
-        anyhow::bail!("Expected exactly 2 public keys in keys.pub, found {}", public_keys.len());
-    }
+    let (dev_idx, ci_idx) = identify_dev_ci_indices(&public_keys, &derived_public)?;
 
     let (new_private, new_public) = crypto_engine.keygen()?;
 
@@ -103,4 +108,37 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: RotateArgs) -> Result<()> {
     println!("NOTE: This does not rotate the actual secret values inside the files.");
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::identify_dev_ci_indices;
+
+    #[test]
+    fn identify_indices_when_dev_is_first() {
+        let keys = vec!["dev".to_string(), "ci".to_string()];
+        let (dev_idx, ci_idx) = identify_dev_ci_indices(&keys, "dev").unwrap();
+        assert_eq!((dev_idx, ci_idx), (0, 1));
+    }
+
+    #[test]
+    fn identify_indices_when_dev_is_second() {
+        let keys = vec!["ci".to_string(), "dev".to_string()];
+        let (dev_idx, ci_idx) = identify_dev_ci_indices(&keys, "dev").unwrap();
+        assert_eq!((dev_idx, ci_idx), (1, 0));
+    }
+
+    #[test]
+    fn identify_indices_errors_for_invalid_key_count() {
+        let keys = vec!["only-one".to_string()];
+        let err = identify_dev_ci_indices(&keys, "only-one").unwrap_err();
+        assert!(format!("{err}").contains("Expected exactly 2 public keys"));
+    }
+
+    #[test]
+    fn identify_indices_errors_when_derived_key_missing() {
+        let keys = vec!["a".to_string(), "b".to_string()];
+        let err = identify_dev_ci_indices(&keys, "dev").unwrap_err();
+        assert!(format!("{err}").contains("does not match any key"));
+    }
 }

@@ -6,6 +6,14 @@ use crate::cli::EditArgs;
 use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::CryptoEngine;
 
+fn default_editor() -> String {
+    if cfg!(windows) {
+        "notepad".to_string()
+    } else {
+        "vi".to_string()
+    }
+}
+
 pub fn run(crypto_engine: &dyn CryptoEngine, args: EditArgs) -> Result<()> {
     let repo_root = config::find_repo_root()?;
     let repo_config = config::load_repo_config(&repo_root)?;
@@ -33,13 +41,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: EditArgs) -> Result<()> {
     let before = std::fs::read(&local_path)?;
 
     // Open in $EDITOR
-    let editor = std::env::var("EDITOR").unwrap_or_else(|_| {
-        if cfg!(windows) {
-            "notepad".to_string()
-        } else {
-            "vi".to_string()
-        }
-    });
+    let editor = std::env::var("EDITOR").unwrap_or_else(|_| default_editor());
     let status = std::process::Command::new(&editor)
         .arg(&local_path)
         .status()
@@ -68,4 +70,18 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: EditArgs) -> Result<()> {
     println!("Remember to commit {}/{}.age", REPO_SECRETS_DIR, args.file);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::default_editor;
+
+    #[test]
+    fn default_editor_matches_platform() {
+        if cfg!(windows) {
+            assert_eq!(default_editor(), "notepad");
+        } else {
+            assert_eq!(default_editor(), "vi");
+        }
+    }
 }

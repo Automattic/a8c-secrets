@@ -4,6 +4,22 @@ use crate::cli::EncryptArgs;
 use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::CryptoEngine;
 
+fn should_attempt_smart_compare(force: bool, has_private_key: bool, age_exists: bool) -> bool {
+    !force && has_private_key && age_exists
+}
+
+fn collect_missing_local_warnings(
+    age_files: &[String],
+    local_files: &[String],
+    files_to_consider: &[String],
+) -> Vec<String> {
+    age_files
+        .iter()
+        .filter(|name| !local_files.contains(*name) && !files_to_consider.contains(*name))
+        .cloned()
+        .collect()
+}
+
 pub fn run(crypto_engine: &dyn CryptoEngine, args: EncryptArgs) -> Result<()> {
     let repo_root = config::find_repo_root()?;
     let repo_config = config::load_repo_config(&repo_root)?;
@@ -65,9 +81,8 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: EncryptArgs) -> Result<()> {
             .with_context(|| format!("Failed to read {}", local_path.display()))?;
 
         // Smart comparison: if .age exists and we have a private key, decrypt and compare
-        if !args.force
+        if should_attempt_smart_compare(args.force, private_key.is_some(), age_path.exists())
             && let Some(ref key) = private_key
-            && age_path.exists()
         {
             let ciphertext = std::fs::read(&age_path)?;
             match crypto_engine.decrypt(&ciphertext, key) {
@@ -100,10 +115,8 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: EncryptArgs) -> Result<()> {
     // Check for missing local files (age exists but no plaintext)
     let age_files = config::list_age_files(&repo_root)?;
     let local_files = config::list_local_files(slug)?;
-    for name in &age_files {
-        if !local_files.contains(name) && !files_to_consider.contains(name) {
-            eprintln!("  {name} — warning: .age exists but no local plaintext, skipping");
-        }
+    for name in collect_missing_local_warnings(&age_files, &local_files, &files_to_consider) {
+        eprintln!("  {name} — warning: .age exists but no local plaintext, skipping");
     }
 
     println!();
@@ -118,4 +131,27 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: EncryptArgs) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{collect_missing_local_warnings, should_attempt_smart_compare};
+
+    #[test]
+    fn smart_compare_requires_no_force_key_and_existing_age() {
+        assert!(should_attempt_smart_compare(false, true, true));
+        assert!(!should_attempt_smart_compare(true, true, true));
+        assert!(!should_attempt_smart_compare(false, false, true));
+        assert!(!should_attempt_smart_compare(false, true, false));
+    }
+
+    #[test]
+    fn collect_missing_local_warnings_excludes_considered_files() {
+        let age_files = vec!["a.json".to_string(), "b.yml".to_string(), "c.toml".to_string()];
+        let local_files = vec!["a.json".to_string()];
+        let files_to_consider = vec!["b.yml".to_string()];
+
+        let warnings = collect_missing_local_warnings(&age_files, &local_files, &files_to_consider);
+        assert_eq!(warnings, vec!["c.toml"]);
+    }
 }

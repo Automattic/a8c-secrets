@@ -5,6 +5,10 @@ use anyhow::Result;
 use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::{derive_public_key, CryptoEngine};
 
+fn collect_all_files(age_files: &BTreeSet<String>, local_files: &BTreeSet<String>) -> BTreeSet<String> {
+    age_files.union(local_files).cloned().collect()
+}
+
 pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     let repo_root = config::find_repo_root()?;
     let repo_config = config::load_repo_config(&repo_root)?;
@@ -39,7 +43,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     // Collect all known file names from both sides
     let age_files: BTreeSet<String> = config::list_age_files(&repo_root)?.into_iter().collect();
     let local_files: BTreeSet<String> = config::list_local_files(slug)?.into_iter().collect();
-    let all_files: BTreeSet<String> = age_files.union(&local_files).cloned().collect();
+    let all_files = collect_all_files(&age_files, &local_files);
 
     if all_files.is_empty() {
         println!("No secret files.");
@@ -81,4 +85,19 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::collect_all_files;
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn collect_all_files_returns_sorted_union_without_duplicates() {
+        let age = BTreeSet::from(["b.yml".to_string(), "a.json".to_string()]);
+        let local = BTreeSet::from(["a.json".to_string(), "c.toml".to_string()]);
+        let all = collect_all_files(&age, &local);
+        let ordered: Vec<String> = all.into_iter().collect();
+        assert_eq!(ordered, vec!["a.json", "b.yml", "c.toml"]);
+    }
 }

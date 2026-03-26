@@ -275,6 +275,10 @@ pub fn slug_from_url(url: &str) -> Option<String> {
     Some(name.to_lowercase())
 }
 
+/// Derive a repo slug from the current git remote `origin` URL.
+///
+/// Returns `None` if `git` is not available, no remote is configured, or the
+/// URL cannot be parsed into a slug.
 pub fn slug_from_git_remote() -> Option<String> {
     let output = std::process::Command::new("git")
         .args(["remote", "get-url", "origin"])

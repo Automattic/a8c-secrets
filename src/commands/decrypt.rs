@@ -1,5 +1,6 @@
 use std::io::{self, IsTerminal, Write};
 
+use age::secrecy::SecretString;
 use anyhow::{Context, Result};
 
 use crate::cli::DecryptArgs;
@@ -69,15 +70,13 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: DecryptArgs) -> Result<()> {
 }
 
 /// Prompt the user to paste their private key (first-run experience).
-fn prompt_for_key(slug: &str) -> Result<String> {
+fn prompt_for_key(slug: &str) -> Result<SecretString> {
     println!("No private key found for '{slug}'.");
     println!();
     println!("Get the dev private key from Secret Store:");
     println!("  https://mc.a8c.com/secret-store/  (look for: a8c-secrets/{slug})");
     println!();
-    let key = rpassword::prompt_password("Paste private key: ")?
-        .trim()
-        .to_string();
+    let key = SecretString::new(rpassword::prompt_password("Paste private key: ")?.trim().to_string().into());
 
     let saved_key = config::save_private_key(slug, &key)?;
     println!("Saved to {}", saved_key.path.display());

@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use age::secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -69,19 +70,19 @@ pub fn decrypted_dir(repo_slug: &str) -> Result<PathBuf> {
 
 /// Read the private key, checking `A8C_SECRETS_IDENTITY` env var first,
 /// then falling back to the key file on disk.
-pub fn get_private_key(repo_slug: &str) -> Result<String> {
+pub fn get_private_key(repo_slug: &str) -> Result<SecretString> {
     if let Ok(val) = std::env::var("A8C_SECRETS_IDENTITY") {
         if val.starts_with("AGE-SECRET-KEY-") {
-            return Ok(val);
+            return Ok(SecretString::new(val.into()));
         } else {
             return std::fs::read_to_string(&val)
-                .map(|s| s.trim().to_string())
+                .map(|s| SecretString::new(s.trim().to_string().into()))
                 .with_context(|| format!("Failed to read identity file: {val}"));
         }
     }
     let path = private_key_path(repo_slug)?;
     std::fs::read_to_string(&path)
-        .map(|s| s.trim().to_string())
+        .map(|s| SecretString::new(s.trim().to_string().into()))
         .with_context(|| {
             format!(
                 "No private key found at {}. Run `a8c-secrets keys import` to set up your key.",
@@ -97,8 +98,8 @@ pub struct SavedPrivateKey {
 }
 
 /// Validate and securely save a private key for the given repo.
-pub fn save_private_key(repo_slug: &str, private_key: &str) -> Result<SavedPrivateKey> {
-    if !private_key.starts_with("AGE-SECRET-KEY-") {
+pub fn save_private_key(repo_slug: &str, private_key: &SecretString) -> Result<SavedPrivateKey> {
+    if !private_key.expose_secret().starts_with("AGE-SECRET-KEY-") {
         anyhow::bail!("Invalid private key format. Expected AGE-SECRET-KEY-...");
     }
 
@@ -109,7 +110,7 @@ pub fn save_private_key(repo_slug: &str, private_key: &str) -> Result<SavedPriva
     }
 
     let existed = key_path.exists();
-    std::fs::write(&key_path, format!("{private_key}\n"))?;
+    std::fs::write(&key_path, format!("{}\n", private_key.expose_secret()))?;
     permissions::set_secure_file_permissions(&key_path)?;
 
     Ok(SavedPrivateKey {

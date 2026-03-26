@@ -1,5 +1,6 @@
 use std::io::{self, Write};
 
+use age::secrecy::ExposeSecret;
 use anyhow::{Context, Result};
 
 use crate::config::{self, REPO_SECRETS_DIR};
@@ -66,7 +67,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     permissions::set_secure_dir_permissions(&keys_dir)?;
 
     let key_path = keys_dir.join(format!("{slug}.key"));
-    std::fs::write(&key_path, format!("{dev_private}\n"))?;
+    std::fs::write(&key_path, format!("{}\n", dev_private.expose_secret()))?;
     permissions::set_secure_file_permissions(&key_path)?;
 
     // Create the decrypted files directory
@@ -83,10 +84,10 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     println!("  {}  (dev private key)", key_path.display());
     println!();
     println!("--- Dev private key ---");
-    println!("{dev_private}");
+    println!("{}", dev_private.expose_secret());
     println!();
     println!("--- CI private key ---");
-    println!("{ci_private}");
+    println!("{}", ci_private.expose_secret());
     println!();
     println!("Next steps:");
     println!("  1. Add the dev private key to Secret Store:");

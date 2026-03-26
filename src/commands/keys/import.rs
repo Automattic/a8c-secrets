@@ -1,3 +1,4 @@
+use age::secrecy::SecretString;
 use anyhow::Result;
 
 use crate::config;
@@ -12,9 +13,7 @@ pub fn run() -> Result<()> {
     println!("Get the dev private key from Secret Store:");
     println!("  https://mc.a8c.com/secret-store/  (look for: a8c-secrets/{slug})");
     println!();
-    let key = rpassword::prompt_password("Paste private key: ")?
-        .trim()
-        .to_string();
+    let key = SecretString::new(rpassword::prompt_password("Paste private key: ")?.trim().to_string().into());
 
     let saved_key = config::save_private_key(slug, &key)?;
 

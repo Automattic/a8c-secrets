@@ -1,4 +1,4 @@
-use age::secrecy::ExposeSecret;
+use age::secrecy::{ExposeSecret, SecretString};
 use anyhow::Result;
 
 /// Abstraction over age encryption operations.
@@ -9,11 +9,11 @@ pub trait CryptoEngine {
     /// Encrypt plaintext for the given recipients (public keys).
     fn encrypt(&self, plaintext: &[u8], recipients: &[String]) -> Result<Vec<u8>>;
 
-    /// Decrypt ciphertext using the given identity (private key string).
-    fn decrypt(&self, ciphertext: &[u8], identity: &str) -> Result<Vec<u8>>;
+    /// Decrypt ciphertext using the given identity (private key).
+    fn decrypt(&self, ciphertext: &[u8], identity: &SecretString) -> Result<Vec<u8>>;
 
     /// Generate a new key pair. Returns (private_key, public_key).
-    fn keygen(&self) -> Result<(String, String)>;
+    fn keygen(&self) -> Result<(SecretString, String)>;
 }
 
 /// Library-based engine using the `age` Rust crate.
@@ -49,10 +49,11 @@ impl CryptoEngine for AgeCrateEngine {
         Ok(encrypted)
     }
 
-    fn decrypt(&self, ciphertext: &[u8], identity: &str) -> Result<Vec<u8>> {
+    fn decrypt(&self, ciphertext: &[u8], identity: &SecretString) -> Result<Vec<u8>> {
         use std::io::Read;
 
         let identity: age::x25519::Identity = identity
+            .expose_secret()
             .parse()
             .map_err(|e| anyhow::anyhow!("Invalid private key: {e}"))?;
 
@@ -68,16 +69,20 @@ impl CryptoEngine for AgeCrateEngine {
         Ok(decrypted)
     }
 
-    fn keygen(&self) -> Result<(String, String)> {
+    fn keygen(&self) -> Result<(SecretString, String)> {
         let secret = age::x25519::Identity::generate();
         let public = secret.to_public();
-        Ok((secret.to_string().expose_secret().to_string(), public.to_string()))
+        Ok((
+            SecretString::new(secret.to_string().expose_secret().to_string().into()),
+            public.to_string(),
+        ))
     }
 }
 
 /// Derive the public key from a private key string.
-pub fn derive_public_key(private_key: &str) -> Result<String> {
+pub fn derive_public_key(private_key: &SecretString) -> Result<String> {
     let identity: age::x25519::Identity = private_key
+        .expose_secret()
         .parse()
         .map_err(|e| anyhow::anyhow!("Invalid private key: {e}"))?;
     Ok(identity.to_public().to_string())
@@ -94,7 +99,10 @@ mod tests {
     #[test]
     fn keygen_produces_valid_key_formats() {
         let (private, public) = backend().keygen().unwrap();
-        assert!(private.starts_with("AGE-SECRET-KEY-"), "private key format");
+        assert!(
+            private.expose_secret().starts_with("AGE-SECRET-KEY-"),
+            "private key format"
+        );
         assert!(public.starts_with("age1"), "public key format");
     }
 
@@ -175,7 +183,7 @@ mod tests {
 
     #[test]
     fn derive_public_key_invalid_input() {
-        let result = derive_public_key("not-a-key");
+        let result = derive_public_key(&SecretString::new("not-a-key".to_string().into()));
         assert!(result.is_err());
     }
 

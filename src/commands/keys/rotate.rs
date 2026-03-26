@@ -1,3 +1,4 @@
+use age::secrecy::ExposeSecret;
 use anyhow::{Context, Result};
 
 use crate::cli::RotateArgs;
@@ -74,7 +75,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: RotateArgs) -> Result<()> {
     // If rotating dev, save the new private key locally
     if args.dev {
         let key_path = config::private_key_path(slug)?;
-        std::fs::write(&key_path, format!("{new_private}\n"))?;
+        std::fs::write(&key_path, format!("{}\n", new_private.expose_secret()))?;
         println!();
         println!("Updated local private key at {}", key_path.display());
     }
@@ -83,7 +84,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: RotateArgs) -> Result<()> {
     println!("Rotated {target_label} key.");
     println!();
     println!("--- New {target_label} private key ---");
-    println!("{new_private}");
+    println!("{}", new_private.expose_secret());
     println!();
 
     if args.dev {

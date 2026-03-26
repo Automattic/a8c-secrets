@@ -14,7 +14,7 @@ fn identify_dev_ci_indices(public_keys: &[String], derived_public: &str) -> Resu
         .iter()
         .position(|pk| pk == derived_public)
         .context("Local private key does not match any key in keys.pub. Import the correct key first.")?;
-    let ci_idx = if dev_idx == 0 { 1 } else { 0 };
+    let ci_idx = 1 - dev_idx;
     Ok((dev_idx, ci_idx))
 }
 
@@ -24,7 +24,7 @@ fn identify_dev_ci_indices(public_keys: &[String], derived_public: &str) -> Resu
 ///
 /// Returns an error if repo/config/key discovery fails, key matching is
 /// invalid, or re-encryption reads/writes fail.
-pub fn run(crypto_engine: &dyn CryptoEngine, args: RotateArgs) -> Result<()> {
+pub fn run(crypto_engine: &dyn CryptoEngine, args: &RotateArgs) -> Result<()> {
     let repo_root = config::find_repo_root()?;
     let repo_config = config::load_repo_config(&repo_root)?;
     let slug = &repo_config.repo;
@@ -40,14 +40,13 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: RotateArgs) -> Result<()> {
 
     // Build updated keys list
     let mut updated_keys = public_keys.clone();
-    let target_label;
-    if args.dev {
-        updated_keys[dev_idx] = new_public.clone();
-        target_label = "dev";
+    let target_label = if args.dev {
+        updated_keys[dev_idx].clone_from(&new_public);
+        "dev"
     } else {
-        updated_keys[ci_idx] = new_public.clone();
-        target_label = "ci";
-    }
+        updated_keys[ci_idx].clone_from(&new_public);
+        "ci"
+    };
 
     // Determine which is dev and which is ci in the output
     let (dev_key, ci_key) = if dev_idx == 0 {

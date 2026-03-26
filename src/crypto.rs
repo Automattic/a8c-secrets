@@ -12,7 +12,7 @@ pub trait CryptoEngine {
     /// Decrypt ciphertext using the given identity (private key).
     fn decrypt(&self, ciphertext: &[u8], identity: &SecretString) -> Result<Vec<u8>>;
 
-    /// Generate a new key pair. Returns (private_key, public_key).
+    /// Generate a new key pair. Returns (`private_key`, `public_key`).
     fn keygen(&self) -> Result<(SecretString, String)>;
 }
 
@@ -22,7 +22,7 @@ pub struct AgeCrateEngine;
 
 impl AgeCrateEngine {
     pub fn new() -> Self {
-        Self::default()
+        Self
     }
 }
 

@@ -11,7 +11,7 @@ use crate::config::{self, REPO_SECRETS_DIR};
 ///
 /// Returns an error if repo/config discovery fails, the file cannot be found,
 /// user-selected deletions fail, or user input cannot be read.
-pub fn run(args: RmArgs) -> Result<()> {
+pub fn run(args: &RmArgs) -> Result<()> {
     let repo_root = config::find_repo_root()?;
     let repo_config = config::load_repo_config(&repo_root)?;
     let slug = &repo_config.repo;

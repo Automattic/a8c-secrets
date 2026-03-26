@@ -18,17 +18,14 @@ pub fn run() -> Result<()> {
     let key_path = config::private_key_path(slug)?;
     println!("Private key: {}", key_path.display());
 
-    let private_key = match config::get_private_key(slug) {
-        Ok(key) => {
-            println!("Status:      configured");
-            Some(key)
-        }
-        Err(_) => {
-            println!("Status:      not configured");
-            println!();
-            println!("Run `a8c-secrets keys import` to set up your private key.");
-            None
-        }
+    let private_key = if let Ok(key) = config::get_private_key(slug) {
+        println!("Status:      configured");
+        Some(key)
+    } else {
+        println!("Status:      not configured");
+        println!();
+        println!("Run `a8c-secrets keys import` to set up your private key.");
+        None
     };
 
     // Derive public key from private key

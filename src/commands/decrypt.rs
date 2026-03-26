@@ -22,7 +22,7 @@ fn compute_orphans(local_files: &[String], age_files: &[String]) -> Vec<String> 
 /// Returns an error if repo/config discovery fails, key resolution/import fails,
 /// encrypted files cannot be read/decrypted, output files cannot be written, or
 /// orphan cleanup fails.
-pub fn run(crypto_engine: &dyn CryptoEngine, args: DecryptArgs) -> Result<()> {
+pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
     let interactive = !args.non_interactive && io::stdin().is_terminal();
 
     let repo_root = config::find_repo_root()?;
@@ -42,7 +42,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: DecryptArgs) -> Result<()> {
     let age_files = config::list_age_files(&repo_root)?;
 
     if age_files.is_empty() {
-        println!("No .age files found in {}/", REPO_SECRETS_DIR);
+        println!("No .age files found in {REPO_SECRETS_DIR}/");
         return Ok(());
     }
 
@@ -64,11 +64,11 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: DecryptArgs) -> Result<()> {
             Ok(plaintext) => {
                 config::atomic_write(&out_path, &plaintext)?;
                 permissions::set_secure_file_permissions(&out_path)?;
-                println!("  {} — decrypted", name);
+                println!("  {name} — decrypted");
                 decrypted_count += 1;
             }
             Err(e) => {
-                eprintln!("  {} — FAILED: {}", name, e);
+                eprintln!("  {name} — FAILED: {e}");
             }
         }
     }

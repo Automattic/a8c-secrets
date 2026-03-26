@@ -131,10 +131,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: EncryptArgs) -> Result<()> {
         "Encrypted {encrypted_count} file(s), skipped {skipped_count} unchanged."
     );
     if encrypted_count > 0 {
-        println!(
-            "Remember to commit the .age file(s) in {}/",
-            REPO_SECRETS_DIR
-        );
+        println!("Remember to commit the .age file(s) in {REPO_SECRETS_DIR}/");
     }
 
     Ok(())

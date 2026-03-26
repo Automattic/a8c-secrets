@@ -100,11 +100,10 @@ pub fn get_private_key(repo_slug: &str) -> Result<SecretString> {
     if let Ok(val) = std::env::var("A8C_SECRETS_IDENTITY") {
         if val.starts_with("AGE-SECRET-KEY-") {
             return Ok(SecretString::new(val.into()));
-        } else {
-            return std::fs::read_to_string(&val)
-                .map(|s| SecretString::new(s.trim().to_string().into()))
-                .with_context(|| format!("Failed to read identity file: {val}"));
         }
+        return std::fs::read_to_string(&val)
+            .map(|s| SecretString::new(s.trim().to_string().into()))
+            .with_context(|| format!("Failed to read identity file: {val}"));
     }
     let path = private_key_path(repo_slug)?;
     std::fs::read_to_string(&path)

@@ -23,25 +23,22 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     println!("Repo: {slug}");
 
     // Private key status
-    let private_key = match config::get_private_key(slug) {
-        Ok(key) => {
-            let public_keys = config::load_public_keys(&repo_root).unwrap_or_default();
-            match derive_public_key(&key) {
-                Ok(derived) => {
-                    if public_keys.contains(&derived) {
-                        println!("Key:  configured (matches a key in keys.pub)");
-                    } else {
-                        println!("Key:  configured (WARNING: does not match any key in keys.pub)");
-                    }
+    let private_key = if let Ok(key) = config::get_private_key(slug) {
+        let public_keys = config::load_public_keys(&repo_root).unwrap_or_default();
+        match derive_public_key(&key) {
+            Ok(derived) => {
+                if public_keys.contains(&derived) {
+                    println!("Key:  configured (matches a key in keys.pub)");
+                } else {
+                    println!("Key:  configured (WARNING: does not match any key in keys.pub)");
                 }
-                Err(_) => println!("Key:  configured (WARNING: could not derive public key)"),
             }
-            Some(key)
+            Err(_) => println!("Key:  configured (WARNING: could not derive public key)"),
         }
-        Err(_) => {
-            println!("Key:  not configured");
-            None
-        }
+        Some(key)
+    } else {
+        println!("Key:  not configured");
+        None
     };
 
     println!();

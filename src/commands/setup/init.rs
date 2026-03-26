@@ -25,26 +25,27 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     }
 
     // Derive repo slug from git remote or prompt the user
-    let slug = match config::slug_from_git_remote() {
-        Some(slug) => {
-            print!("Repo slug [{}]: ", slug);
-            io::stdout().flush()?;
-            let mut input = String::new();
-            io::stdin().read_line(&mut input)?;
-            let input = input.trim();
-            if input.is_empty() { slug } else { input.to_string() }
+    let slug = if let Some(slug) = config::slug_from_git_remote() {
+        print!("Repo slug [{slug}]: ");
+        io::stdout().flush()?;
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        let input = input.trim();
+        if input.is_empty() {
+            slug
+        } else {
+            input.to_string()
         }
-        None => {
-            print!("Repo slug (e.g. wordpress-ios): ");
-            io::stdout().flush()?;
-            let mut input = String::new();
-            io::stdin().read_line(&mut input)?;
-            let input = input.trim().to_string();
-            if input.is_empty() {
-                anyhow::bail!("Repo slug cannot be empty");
-            }
-            input
+    } else {
+        print!("Repo slug (e.g. wordpress-ios): ");
+        io::stdout().flush()?;
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        let input = input.trim().to_string();
+        if input.is_empty() {
+            anyhow::bail!("Repo slug cannot be empty");
         }
+        input
     };
 
     // Generate dev and CI key pairs

@@ -1,6 +1,6 @@
 /// Print the extended man-page-style manual.
 pub fn print() {
-    print!("{}", MANUAL);
+    print!("{MANUAL}");
 }
 
 const MANUAL: &str = r#"a8c-secrets — Encrypted secrets management for Automattic mobile repositories

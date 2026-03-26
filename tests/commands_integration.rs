@@ -57,6 +57,35 @@ fn local_key_path(home_dir: &Path, slug: &str) -> PathBuf {
 }
 
 #[test]
+fn decrypt_non_interactive_fails_when_no_key_configured() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_dir = temp.path().join("repo");
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&repo_dir).unwrap();
+    fs::create_dir_all(&home_dir).unwrap();
+
+    let slug = "demo-repo";
+    write_repo_config(&repo_dir, slug);
+
+    let dev_identity = age::x25519::Identity::generate();
+    let ci_identity = age::x25519::Identity::generate();
+    let dev_public = dev_identity.to_public().to_string();
+    let ci_public = ci_identity.to_public().to_string();
+    write_keys_pub(&repo_dir, &dev_public, &ci_public);
+
+    let plaintext = b"secret-data";
+    let ciphertext = encrypt_for(&[dev_public, ci_public], plaintext);
+    fs::write(repo_dir.join(".a8c-secrets/secret.json.age"), ciphertext).unwrap();
+
+    configured_command(&repo_dir, &home_dir)
+        .arg("decrypt")
+        .arg("--non-interactive")
+        .env_remove("A8C_SECRETS_IDENTITY")
+        .assert()
+        .failure();
+}
+
+#[test]
 fn decrypt_non_interactive_writes_plaintext_to_local_home_dir() {
     let temp = tempfile::tempdir().unwrap();
     let repo_dir = temp.path().join("repo");

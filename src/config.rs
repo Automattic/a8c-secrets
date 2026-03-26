@@ -338,6 +338,21 @@ mod tests {
         );
     }
 
+    #[test]
+    fn slug_from_empty_string() {
+        assert_eq!(slug_from_url(""), None);
+    }
+
+    #[test]
+    fn slug_from_url_trailing_slash() {
+        assert_eq!(slug_from_url("https://github.com/Automattic/repo/"), None);
+    }
+
+    #[test]
+    fn slug_from_url_only_git_suffix() {
+        assert_eq!(slug_from_url("https://github.com/.git"), None);
+    }
+
     // -- load_repo_config --
 
     #[test]
@@ -445,5 +460,44 @@ mod tests {
         let serialized = toml::to_string_pretty(&config).unwrap();
         let deserialized: RepoConfig = toml::from_str(&serialized).unwrap();
         assert_eq!(deserialized.repo, "my-app");
+    }
+
+    // -- save_private_key --
+
+    #[test]
+    fn save_private_key_rejects_invalid_prefix() {
+        let key = SecretString::new("not-a-valid-key".to_string().into());
+        let result = save_private_key("test-repo", &key);
+        assert!(result.is_err());
+        assert!(
+            format!("{}", result.unwrap_err()).contains("Invalid private key format"),
+        );
+    }
+
+    #[test]
+    fn save_private_key_creates_dirs_and_writes_file() {
+        let slug = &format!("save-test-{}", std::process::id());
+        let key = SecretString::new("AGE-SECRET-KEY-TESTVALUE".to_string().into());
+        let path = save_private_key(slug, &key).unwrap();
+
+        assert!(path.exists());
+        let content = fs::read_to_string(&path).unwrap();
+        assert_eq!(content.trim(), "AGE-SECRET-KEY-TESTVALUE");
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+            let parent_mode = fs::metadata(path.parent().unwrap())
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(parent_mode, 0o700);
+        }
+
+        // Clean up
+        let _ = fs::remove_file(&path);
     }
 }

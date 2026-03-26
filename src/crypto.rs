@@ -4,8 +4,8 @@ use anyhow::Result;
 /// Abstraction over age encryption operations.
 ///
 /// The initial implementation uses the `age` crate directly as a library.
-/// This trait allows swapping to a CLI-subprocess backend if needed later.
-pub trait AgeBackend {
+/// This trait allows swapping to a CLI-subprocess engine if needed later.
+pub trait CryptoEngine {
     /// Encrypt plaintext for the given recipients (public keys).
     fn encrypt(&self, plaintext: &[u8], recipients: &[String]) -> Result<Vec<u8>>;
 
@@ -16,17 +16,17 @@ pub trait AgeBackend {
     fn keygen(&self) -> Result<(String, String)>;
 }
 
-/// Library-based backend using the `age` Rust crate.
+/// Library-based engine using the `age` Rust crate.
 #[derive(Default)]
-pub struct AgeCrateBackend;
+pub struct AgeCrateEngine;
 
-impl AgeCrateBackend {
+impl AgeCrateEngine {
     pub fn new() -> Self {
         Self::default()
     }
 }
 
-impl AgeBackend for AgeCrateBackend {
+impl CryptoEngine for AgeCrateEngine {
     fn encrypt(&self, plaintext: &[u8], recipients: &[String]) -> Result<Vec<u8>> {
         use std::io::Write;
 
@@ -87,8 +87,8 @@ pub fn derive_public_key(private_key: &str) -> Result<String> {
 mod tests {
     use super::*;
 
-    fn backend() -> AgeCrateBackend {
-        AgeCrateBackend::new()
+    fn backend() -> AgeCrateEngine {
+        AgeCrateEngine::new()
     }
 
     #[test]

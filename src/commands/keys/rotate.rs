@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 
-use crate::backend::{derive_public_key, AgeCrateBackend, AgeBackend};
 use crate::cli::RotateArgs;
 use crate::config::{self, SECRETS_DIR};
+use crate::crypto::{derive_public_key, AgeCrateEngine, CryptoEngine};
 
 pub fn run(args: RotateArgs) -> Result<()> {
     let repo_root = config::find_repo_root()?;
@@ -24,7 +24,7 @@ pub fn run(args: RotateArgs) -> Result<()> {
         anyhow::bail!("Expected exactly 2 public keys in keys.pub, found {}", public_keys.len());
     }
 
-    let backend = AgeCrateBackend::new();
+    let backend = AgeCrateEngine::new();
     let (new_private, new_public) = backend.keygen()?;
 
     // Build updated keys list

@@ -1,7 +1,7 @@
 use anyhow::Result;
 
-use crate::backend::{derive_public_key, AgeCrateBackend, AgeBackend};
 use crate::config::{self, SECRETS_DIR};
+use crate::crypto::{derive_public_key, AgeCrateEngine, CryptoEngine};
 
 pub fn run() -> Result<()> {
     let repo_root = config::find_repo_root()?;
@@ -51,7 +51,7 @@ pub fn run() -> Result<()> {
         return Ok(());
     }
 
-    let backend = AgeCrateBackend::new();
+    let backend = AgeCrateEngine::new();
     let secrets_dir = repo_root.join(SECRETS_DIR);
     let local_dir = config::decrypted_dir(slug)?;
 

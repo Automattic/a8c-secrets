@@ -2,8 +2,8 @@ use std::io::{self, Write};
 
 use anyhow::{Context, Result};
 
-use crate::backend::{AgeCrateBackend, AgeBackend};
 use crate::config::{self, SECRETS_DIR};
+use crate::crypto::{AgeCrateEngine, CryptoEngine};
 use crate::permissions;
 
 pub fn run() -> Result<()> {
@@ -40,7 +40,7 @@ pub fn run() -> Result<()> {
         }
     };
 
-    let backend = AgeCrateBackend::new();
+    let backend = AgeCrateEngine::new();
 
     // Generate dev and CI key pairs
     let (dev_private, dev_public) = backend.keygen()?;

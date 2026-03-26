@@ -2,9 +2,9 @@ use std::io::{self, IsTerminal, Write};
 
 use anyhow::{Context, Result};
 
-use crate::backend::{AgeCrateBackend, AgeBackend};
 use crate::cli::DecryptArgs;
 use crate::config::{self, SECRETS_DIR};
+use crate::crypto::{AgeCrateEngine, CryptoEngine};
 use crate::permissions;
 
 pub fn run(args: DecryptArgs) -> Result<()> {
@@ -21,7 +21,7 @@ pub fn run(args: DecryptArgs) -> Result<()> {
         Err(e) => return Err(e),
     };
 
-    let backend = AgeCrateBackend::new();
+    let backend = AgeCrateEngine::new();
     let age_files = config::list_age_files(&repo_root)?;
 
     if age_files.is_empty() {

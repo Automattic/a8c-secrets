@@ -2,9 +2,9 @@ use std::io::{self, Write};
 
 use anyhow::{Context, Result};
 
-use crate::backend::{AgeCrateBackend, AgeBackend};
 use crate::cli::EditArgs;
 use crate::config::{self, SECRETS_DIR};
+use crate::crypto::{AgeCrateEngine, CryptoEngine};
 
 pub fn run(args: EditArgs) -> Result<()> {
     let repo_root = config::find_repo_root()?;
@@ -52,7 +52,7 @@ pub fn run(args: EditArgs) -> Result<()> {
     }
 
     // Encrypt the changed file
-    let backend = AgeCrateBackend::new();
+    let backend = AgeCrateEngine::new();
     let ciphertext = backend.encrypt(&after, &public_keys)?;
     let age_path = repo_root.join(SECRETS_DIR).join(format!("{}.age", args.file));
     config::atomic_write(&age_path, &ciphertext)?;

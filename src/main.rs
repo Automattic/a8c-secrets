@@ -1,7 +1,7 @@
-mod backend;
 mod cli;
 mod commands;
 mod config;
+mod crypto;
 mod manual;
 mod permissions;
 

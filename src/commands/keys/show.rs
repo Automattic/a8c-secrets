@@ -1,7 +1,7 @@
 use anyhow::Result;
 
-use crate::backend::derive_public_key;
 use crate::config;
+use crate::crypto::derive_public_key;
 
 pub fn run() -> Result<()> {
     let repo_root = config::find_repo_root()?;

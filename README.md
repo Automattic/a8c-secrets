@@ -75,7 +75,7 @@ In the repo (committed):              On the developer's machine (never in git):
 
 **Why Rust?** Cross-platform binaries (macOS, Linux, Windows) from a single codebase. Existing Buildkite pipeline and team familiarity from the [`git-conceal`](https://github.com/Automattic/git-conceal) project.
 
-**Why `age` as a library, not a CLI subprocess?** Using the [`age` crate](https://docs.rs/age/latest/age/) eliminates the external dependency — users don't need to install `age` separately, and there's no PATH injection risk. The crate implements the same [`age-encryption.org/v1`](https://age-encryption.org/v1) spec as the [Go reference implementation](https://github.com/FiloSottile/age). A trait-based backend abstraction (`AgeBackend`) allows swapping to a subprocess backend if ever needed.
+**Why `age` as a library, not a CLI subprocess?** Using the [`age` crate](https://docs.rs/age/latest/age/) eliminates the external dependency — users don't need to install `age` separately, and there's no PATH injection risk. The crate implements the same [`age-encryption.org/v1`](https://age-encryption.org/v1) spec as the [Go reference implementation](https://github.com/FiloSottile/age). A trait-based abstraction (`CryptoEngine`) allows swapping to a subprocess engine if ever needed.
 
 **Why decrypt outside the working tree?** Decrypted secrets in `~/.a8c-secrets/<repo>/` can never be accidentally committed (even a `.gitignore` typo can't expose them) and are invisible to AI agents restricted to the repo working copy.
 

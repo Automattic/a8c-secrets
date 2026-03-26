@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use crate::permissions;
@@ -171,11 +172,13 @@ pub fn list_local_files(repo_slug: &str) -> Result<Vec<String>> {
 
 /// Write content atomically: write to a temp file then rename.
 pub fn atomic_write(path: &Path, content: &[u8]) -> Result<()> {
-    let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, content)
-        .with_context(|| format!("Failed to write temp file {}", tmp.display()))?;
-    std::fs::rename(&tmp, path)
-        .with_context(|| format!("Failed to rename {} -> {}", tmp.display(), path.display()))?;
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let mut tmp = tempfile::NamedTempFile::new_in(parent)
+        .with_context(|| format!("Failed to create temp file in {}", parent.display()))?;
+    tmp.write_all(content)
+        .with_context(|| format!("Failed to write temp file in {}", parent.display()))?;
+    tmp.persist(path)
+        .map_err(|e| anyhow::anyhow!("Failed to persist temp file to {}: {e}", path.display()))?;
     Ok(())
 }
 

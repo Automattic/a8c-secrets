@@ -18,3 +18,5 @@ toml = "0.8"
 [target.'cfg(windows)'.dependencies]
 windows-permissions = "0.2.4"
 
+[dev-dependencies]
+assert_cmd = "2"

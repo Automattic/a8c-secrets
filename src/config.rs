@@ -137,18 +137,16 @@ pub fn atomic_write(path: &Path, content: &[u8]) -> Result<()> {
     Ok(())
 }
 
-/// Try to derive a repo slug from the git remote "origin" URL.
+/// Extract a repo slug from a git remote URL string.
 /// Extracts the last path component without `.git` suffix.
 /// e.g. `git@github.com:Automattic/wordpress-ios.git` -> `wordpress-ios`
-/// Extract a repo slug from a git remote URL string.
 /// This is the pure logic extracted for testability; `slug_from_git_remote`
 /// handles the git subprocess call.
 pub fn slug_from_url(url: &str) -> Option<String> {
-    let name = url
-        .rsplit('/')
-        .next()?
+    let last_component = url.rsplit('/').next()?;
+    let name = last_component
         .strip_suffix(".git")
-        .unwrap_or_else(|| url.rsplit('/').next().unwrap());
+        .unwrap_or(last_component);
     if name.is_empty() {
         return None;
     }

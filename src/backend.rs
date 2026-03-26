@@ -17,11 +17,12 @@ pub trait AgeBackend {
 }
 
 /// Library-based backend using the `age` Rust crate.
+#[derive(Default)]
 pub struct AgeCrateBackend;
 
 impl AgeCrateBackend {
     pub fn new() -> Self {
-        Self
+        Self::default()
     }
 }
 

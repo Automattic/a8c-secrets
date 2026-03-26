@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use anyhow::Result;
 
 use crate::config::{self, SECRETS_DIR};
@@ -35,16 +37,9 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     println!();
 
     // Collect all known file names from both sides
-    let age_files = config::list_age_files(&repo_root)?;
-    let local_files = config::list_local_files(slug)?;
-
-    let mut all_files: Vec<String> = age_files.clone();
-    for f in &local_files {
-        if !all_files.contains(f) {
-            all_files.push(f.clone());
-        }
-    }
-    all_files.sort();
+    let age_files: BTreeSet<String> = config::list_age_files(&repo_root)?.into_iter().collect();
+    let local_files: BTreeSet<String> = config::list_local_files(slug)?.into_iter().collect();
+    let all_files: BTreeSet<String> = age_files.union(&local_files).cloned().collect();
 
     if all_files.is_empty() {
         println!("No secret files.");

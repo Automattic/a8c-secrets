@@ -3,10 +3,10 @@ use std::io::{self, Write};
 use anyhow::{Context, Result};
 
 use crate::config::{self, SECRETS_DIR};
-use crate::crypto::{AgeCrateEngine, CryptoEngine};
+use crate::crypto::CryptoEngine;
 use crate::permissions;
 
-pub fn run() -> Result<()> {
+pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     let cwd = std::env::current_dir().context("Failed to get current directory")?;
     let secrets_dir = cwd.join(SECRETS_DIR);
 
@@ -40,11 +40,9 @@ pub fn run() -> Result<()> {
         }
     };
 
-    let backend = AgeCrateEngine::new();
-
     // Generate dev and CI key pairs
-    let (dev_private, dev_public) = backend.keygen()?;
-    let (ci_private, ci_public) = backend.keygen()?;
+    let (dev_private, dev_public) = crypto_engine.keygen()?;
+    let (ci_private, ci_public) = crypto_engine.keygen()?;
 
     // Create .a8c-secrets/ directory
     std::fs::create_dir_all(&secrets_dir)

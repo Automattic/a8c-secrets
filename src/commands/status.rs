@@ -1,9 +1,9 @@
 use anyhow::Result;
 
 use crate::config::{self, SECRETS_DIR};
-use crate::crypto::{derive_public_key, AgeCrateEngine, CryptoEngine};
+use crate::crypto::{derive_public_key, CryptoEngine};
 
-pub fn run() -> Result<()> {
+pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     let repo_root = config::find_repo_root()?;
     let repo_config = config::load_repo_config(&repo_root)?;
     let slug = &repo_config.repo;
@@ -51,7 +51,6 @@ pub fn run() -> Result<()> {
         return Ok(());
     }
 
-    let backend = AgeCrateEngine::new();
     let secrets_dir = repo_root.join(SECRETS_DIR);
     let local_dir = config::decrypted_dir(slug)?;
 
@@ -69,7 +68,7 @@ pub fn run() -> Result<()> {
                         let local_path = local_dir.join(name);
                         let ciphertext = std::fs::read(&age_path)?;
                         let local_content = std::fs::read(&local_path)?;
-                        match backend.decrypt(&ciphertext, key) {
+                        match crypto_engine.decrypt(&ciphertext, key) {
                             Ok(decrypted) if decrypted == local_content => "\u{2713} in sync",
                             Ok(_) => "\u{26a0} modified locally",
                             Err(_) => "\u{26a0} cannot decrypt to compare",

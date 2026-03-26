@@ -9,23 +9,25 @@ use anyhow::Result;
 use clap::Parser;
 
 use cli::Cli;
+use crypto::AgeCrateEngine;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    let crypto_engine = AgeCrateEngine::new();
 
     match cli.command {
-        cli::Command::Decrypt(args) => commands::decrypt::run(args),
-        cli::Command::Encrypt(args) => commands::encrypt::run(args),
-        cli::Command::Edit(args) => commands::edit::run(args),
+        cli::Command::Decrypt(args) => commands::decrypt::run(&crypto_engine, args),
+        cli::Command::Encrypt(args) => commands::encrypt::run(&crypto_engine, args),
+        cli::Command::Edit(args) => commands::edit::run(&crypto_engine, args),
         cli::Command::Rm(args) => commands::rm::run(args),
-        cli::Command::Status => commands::status::run(),
+        cli::Command::Status => commands::status::run(&crypto_engine),
         cli::Command::Keys(sub) => match sub.command {
             cli::KeysCommand::Show => commands::keys::show::run(),
             cli::KeysCommand::Import => commands::keys::import::run(),
-            cli::KeysCommand::Rotate(args) => commands::keys::rotate::run(args),
+            cli::KeysCommand::Rotate(args) => commands::keys::rotate::run(&crypto_engine, args),
         },
         cli::Command::Setup(sub) => match sub.command {
-            cli::SetupCommand::Init => commands::setup::init::run(),
+            cli::SetupCommand::Init => commands::setup::init::run(&crypto_engine),
             cli::SetupCommand::Nuke => commands::setup::nuke::run(),
             cli::SetupCommand::Completions(args) => commands::setup::completions::run(args),
         },

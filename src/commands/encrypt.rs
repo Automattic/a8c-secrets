@@ -2,15 +2,14 @@ use anyhow::{Context, Result};
 
 use crate::cli::EncryptArgs;
 use crate::config::{self, SECRETS_DIR};
-use crate::crypto::{AgeCrateEngine, CryptoEngine};
+use crate::crypto::CryptoEngine;
 
-pub fn run(args: EncryptArgs) -> Result<()> {
+pub fn run(crypto_engine: &dyn CryptoEngine, args: EncryptArgs) -> Result<()> {
     let repo_root = config::find_repo_root()?;
     let repo_config = config::load_repo_config(&repo_root)?;
     let slug = &repo_config.repo;
 
     let public_keys = config::load_public_keys(&repo_root)?;
-    let backend = AgeCrateEngine::new();
 
     let secrets_dir = repo_root.join(SECRETS_DIR);
     let local_dir = config::decrypted_dir(slug)?;
@@ -71,7 +70,7 @@ pub fn run(args: EncryptArgs) -> Result<()> {
             && age_path.exists()
         {
             let ciphertext = std::fs::read(&age_path)?;
-            match backend.decrypt(&ciphertext, key) {
+            match crypto_engine.decrypt(&ciphertext, key) {
                 Ok(decrypted) if decrypted == local_content => {
                     println!("  {name} — unchanged, skipping");
                     skipped_count += 1;
@@ -88,7 +87,7 @@ pub fn run(args: EncryptArgs) -> Result<()> {
 
         // Encrypt
         let existed = age_path.exists();
-        let ciphertext = backend.encrypt(&local_content, &public_keys)?;
+        let ciphertext = crypto_engine.encrypt(&local_content, &public_keys)?;
         config::atomic_write(&age_path, &ciphertext)?;
         if existed && !args.force {
             println!("  {name} — modified, encrypting");

@@ -2,9 +2,9 @@ use anyhow::{Context, Result};
 
 use crate::cli::RotateArgs;
 use crate::config::{self, SECRETS_DIR};
-use crate::crypto::{derive_public_key, AgeCrateEngine, CryptoEngine};
+use crate::crypto::{derive_public_key, CryptoEngine};
 
-pub fn run(args: RotateArgs) -> Result<()> {
+pub fn run(crypto_engine: &dyn CryptoEngine, args: RotateArgs) -> Result<()> {
     let repo_root = config::find_repo_root()?;
     let repo_config = config::load_repo_config(&repo_root)?;
     let slug = &repo_config.repo;
@@ -24,8 +24,7 @@ pub fn run(args: RotateArgs) -> Result<()> {
         anyhow::bail!("Expected exactly 2 public keys in keys.pub, found {}", public_keys.len());
     }
 
-    let backend = AgeCrateEngine::new();
-    let (new_private, new_public) = backend.keygen()?;
+    let (new_private, new_public) = crypto_engine.keygen()?;
 
     // Build updated keys list
     let mut updated_keys = public_keys.clone();
@@ -64,9 +63,10 @@ pub fn run(args: RotateArgs) -> Result<()> {
     for name in &age_files {
         let age_path = secrets_dir.join(format!("{name}.age"));
         let ciphertext = std::fs::read(&age_path)?;
-        let plaintext = backend.decrypt(&ciphertext, decrypt_key)
+        let plaintext = crypto_engine
+            .decrypt(&ciphertext, decrypt_key)
             .with_context(|| format!("Failed to decrypt {name} during re-encryption"))?;
-        let new_ciphertext = backend.encrypt(&plaintext, &updated_keys)?;
+        let new_ciphertext = crypto_engine.encrypt(&plaintext, &updated_keys)?;
         config::atomic_write(&age_path, &new_ciphertext)?;
         println!("  {name} — re-encrypted");
     }

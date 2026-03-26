@@ -4,10 +4,10 @@ use anyhow::{Context, Result};
 
 use crate::cli::DecryptArgs;
 use crate::config::{self, SECRETS_DIR};
-use crate::crypto::{AgeCrateEngine, CryptoEngine};
+use crate::crypto::CryptoEngine;
 use crate::permissions;
 
-pub fn run(args: DecryptArgs) -> Result<()> {
+pub fn run(crypto_engine: &dyn CryptoEngine, args: DecryptArgs) -> Result<()> {
     let interactive = !args.non_interactive && io::stdin().is_terminal();
 
     let repo_root = config::find_repo_root()?;
@@ -21,7 +21,6 @@ pub fn run(args: DecryptArgs) -> Result<()> {
         Err(e) => return Err(e),
     };
 
-    let backend = AgeCrateEngine::new();
     let age_files = config::list_age_files(&repo_root)?;
 
     if age_files.is_empty() {
@@ -43,7 +42,7 @@ pub fn run(args: DecryptArgs) -> Result<()> {
         let ciphertext = std::fs::read(&age_path)
             .with_context(|| format!("Failed to read {}", age_path.display()))?;
 
-        match backend.decrypt(&ciphertext, &private_key) {
+        match crypto_engine.decrypt(&ciphertext, &private_key) {
             Ok(plaintext) => {
                 config::atomic_write(&out_path, &plaintext)?;
                 permissions::set_secure_file_permissions(&out_path)?;

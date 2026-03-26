@@ -4,9 +4,9 @@ use anyhow::{Context, Result};
 
 use crate::cli::EditArgs;
 use crate::config::{self, SECRETS_DIR};
-use crate::crypto::{AgeCrateEngine, CryptoEngine};
+use crate::crypto::CryptoEngine;
 
-pub fn run(args: EditArgs) -> Result<()> {
+pub fn run(crypto_engine: &dyn CryptoEngine, args: EditArgs) -> Result<()> {
     let repo_root = config::find_repo_root()?;
     let repo_config = config::load_repo_config(&repo_root)?;
     let slug = &repo_config.repo;
@@ -52,8 +52,7 @@ pub fn run(args: EditArgs) -> Result<()> {
     }
 
     // Encrypt the changed file
-    let backend = AgeCrateEngine::new();
-    let ciphertext = backend.encrypt(&after, &public_keys)?;
+    let ciphertext = crypto_engine.encrypt(&after, &public_keys)?;
     let age_path = repo_root.join(SECRETS_DIR).join(format!("{}.age", args.file));
     config::atomic_write(&age_path, &ciphertext)?;
 

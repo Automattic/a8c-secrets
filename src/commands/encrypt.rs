@@ -27,7 +27,7 @@ fn collect_missing_local_warnings(
 /// Returns an error if repo/config discovery fails, target files are invalid or
 /// unreadable, required key material is unavailable, encryption fails, or
 /// output files cannot be written.
-pub fn run(crypto_engine: &dyn CryptoEngine, args: EncryptArgs) -> Result<()> {
+pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
     let repo_root = config::find_repo_root()?;
     let repo_config = config::load_repo_config(&repo_root)?;
     let slug = &repo_config.repo;
@@ -54,7 +54,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: EncryptArgs) -> Result<()> {
                 anyhow::bail!("File not found: {}", local_dir.join(f).display());
             }
         }
-        args.files
+        args.files.clone()
     };
 
     if files_to_consider.is_empty() {

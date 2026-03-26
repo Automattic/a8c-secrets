@@ -19,7 +19,7 @@ fn main() -> Result<()> {
 
     match cli.command {
         cli::Command::Decrypt(args) => commands::decrypt::run(&crypto_engine, &args),
-        cli::Command::Encrypt(args) => commands::encrypt::run(&crypto_engine, args),
+        cli::Command::Encrypt(args) => commands::encrypt::run(&crypto_engine, &args),
         cli::Command::Edit(args) => commands::edit::run(&crypto_engine, &args),
         cli::Command::Rm(args) => commands::rm::run(&args),
         cli::Command::Status => commands::status::run(&crypto_engine),

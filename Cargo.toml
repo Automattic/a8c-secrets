@@ -10,6 +10,7 @@ anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
 dirs = "6"
+rpassword = "7.4.0"
 serde = { version = "1", features = ["derive"] }
 tempfile = "3"
 toml = "0.8"

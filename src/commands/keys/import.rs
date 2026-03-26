@@ -1,5 +1,3 @@
-use std::io::{self, Write};
-
 use anyhow::Result;
 
 use crate::config;
@@ -14,12 +12,9 @@ pub fn run() -> Result<()> {
     println!("Get the dev private key from Secret Store:");
     println!("  https://mc.a8c.com/secret-store/  (look for: a8c-secrets/{slug})");
     println!();
-    print!("Paste private key: ");
-    io::stdout().flush()?;
-
-    let mut key = String::new();
-    io::stdin().read_line(&mut key)?;
-    let key = key.trim().to_string();
+    let key = rpassword::prompt_password("Paste private key: ")?
+        .trim()
+        .to_string();
 
     let saved_key = config::save_private_key(slug, &key)?;
 

@@ -369,7 +369,48 @@ fn status_succeeds_for_configured_repo() {
 
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     assert!(stdout.contains("Repo: demo-repo"), "unexpected stdout: {stdout}");
+    assert!(
+        stdout.contains("Public keys: 2 found (2 expected)"),
+        "unexpected stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("Private key:") && stdout.contains("matches a key in keys.pub"),
+        "unexpected stdout: {stdout}"
+    );
     assert!(stdout.contains("a.txt"), "unexpected stdout: {stdout}");
+}
+
+#[test]
+fn status_succeeds_when_keys_pub_missing_but_shows_error_lines() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_dir = temp.path().join("repo");
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&repo_dir).unwrap();
+    fs::create_dir_all(&home_dir).unwrap();
+
+    let slug = "demo-repo";
+    write_repo_config(&repo_dir, slug);
+
+    let dev_identity = age::x25519::Identity::generate();
+    let dev_private = dev_identity.to_string().expose_secret().to_string();
+    let key_path = local_key_path(&home_dir, slug);
+    fs::create_dir_all(key_path.parent().unwrap()).unwrap();
+    fs::write(&key_path, format!("{dev_private}\n")).unwrap();
+
+    let assert = configured_command(&repo_dir, &home_dir)
+        .arg("status")
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
+    assert!(
+        stdout.contains("Public keys: error:"),
+        "expected keys.pub error on stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("Private key:") && stdout.contains("cannot compare to keys.pub"),
+        "unexpected stdout: {stdout}"
+    );
 }
 
 #[test]

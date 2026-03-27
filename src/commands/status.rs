@@ -9,6 +9,9 @@ fn collect_all_files(age_files: &BTreeSet<String>, local_files: &BTreeSet<String
     age_files.union(local_files).cloned().collect()
 }
 
+/// Expected number of `age` recipient lines in `keys.pub` (dev + CI).
+const EXPECTED_PUBLIC_KEYS: usize = 2;
+
 /// Show key status and sync state for all known secret files.
 ///
 /// # Errors
@@ -22,22 +25,43 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
 
     println!("Repo: {slug}");
 
-    // Private key status
+    let public_keys_result = config::load_public_keys(&repo_root);
+    match &public_keys_result {
+        Ok(keys) => {
+            println!(
+                "Public keys: {} found ({} expected)",
+                keys.len(),
+                EXPECTED_PUBLIC_KEYS
+            );
+        }
+        Err(e) => {
+            println!("Public keys: error: {e:#}");
+        }
+    }
+
     let private_key = if let Ok(key) = config::get_private_key(slug) {
-        let public_keys = config::load_public_keys(&repo_root).unwrap_or_default();
-        match derive_public_key(&key) {
-            Ok(derived) => {
-                if public_keys.contains(&derived) {
-                    println!("Key:  configured (matches a key in keys.pub)");
-                } else {
-                    println!("Key:  configured (WARNING: does not match any key in keys.pub)");
+        match &public_keys_result {
+            Ok(public_keys) => match derive_public_key(&key) {
+                Ok(derived) => {
+                    if public_keys.contains(&derived) {
+                        println!("Private key:  configured (matches a key in keys.pub)");
+                    } else {
+                        println!("Private key:  configured (WARNING: does not match any key in keys.pub)");
+                    }
                 }
+                Err(_) => {
+                    println!("Private key:  configured (WARNING: could not derive public key)");
+                }
+            },
+            Err(_) => {
+                println!(
+                    "Private key:  configured (cannot compare to keys.pub — see Public keys line above)"
+                );
             }
-            Err(_) => println!("Key:  configured (WARNING: could not derive public key)"),
         }
         Some(key)
     } else {
-        println!("Key:  not configured");
+        println!("Private key:  not configured");
         None
     };
 

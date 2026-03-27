@@ -107,7 +107,8 @@ EXAMPLES:
         long_about = "\
 Show the sync status of all secret files.
 
-Displays the repo slug, private key status, and each file's sync state:
+Displays the repo slug, how many public keys were read from keys.pub (2 expected),
+private key status, and each file's sync state:
   \u{2713}  in sync         — local plaintext matches encrypted .age content
   \u{26a0}  modified locally — plaintext differs from .age (needs encrypt)
   \u{2739}  local only       — no .age file in repo (new, needs encrypt)

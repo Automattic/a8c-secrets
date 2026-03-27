@@ -37,6 +37,10 @@ impl CryptoEngine for AgeCrateEngine {
     fn encrypt(&self, plaintext: &[u8], recipients: &[String]) -> Result<Vec<u8>> {
         use std::io::Write;
 
+        if recipients.is_empty() {
+            anyhow::bail!("At least one recipient public key is required");
+        }
+
         let recipients: Vec<age::x25519::Recipient> = recipients
             .iter()
             .map(|r| r.parse())
@@ -46,7 +50,7 @@ impl CryptoEngine for AgeCrateEngine {
         let encryptor = age::Encryptor::with_recipients(
             recipients.iter().map(|r| r as &dyn age::Recipient),
         )
-        .expect("recipients list is non-empty");
+        .map_err(|e| anyhow::anyhow!("Failed to initialize age encryptor: {e}"))?;
 
         let mut encrypted = vec![];
         let mut writer = encryptor.wrap_output(&mut encrypted)?;
@@ -166,11 +170,13 @@ mod tests {
     }
 
     #[test]
-    fn encrypt_empty_recipients_panics() {
+    fn encrypt_empty_recipients_errors() {
         let engine = crypto_engine();
-        // age::Encryptor::with_recipients panics on empty recipients
-        let result = std::panic::catch_unwind(|| engine.encrypt(b"data", &[]));
+        let result = engine.encrypt(b"data", &[]);
         assert!(result.is_err());
+        assert!(
+            format!("{}", result.unwrap_err()).contains("At least one recipient public key is required")
+        );
     }
 
     #[test]

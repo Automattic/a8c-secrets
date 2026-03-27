@@ -2,6 +2,7 @@
 name = "a8c-secrets"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
 description = "CLI tool for managing encrypted secrets in Automattic mobile repositories"
 
 [dependencies]

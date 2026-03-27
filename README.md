@@ -106,6 +106,8 @@ On employee offboarding:
 
 ## Development
 
+Requires **Rust 1.85** or later (matches the [Rust 2024 edition](https://doc.rust-lang.org/edition-guide/rust-2024/index.html) used by this crate).
+
 ```sh
 make help          # Show all targets
 make lint          # Run clippy

@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use anyhow::{Context, Result};
 
 use crate::cli::EncryptArgs;
@@ -11,8 +13,8 @@ fn should_attempt_smart_compare(force: bool, has_private_key: bool, age_exists: 
 
 fn collect_missing_local_warnings(
     age_files: &[String],
-    local_files: &[String],
-    files_to_consider: &[String],
+    local_files: &BTreeSet<String>,
+    files_to_consider: &BTreeSet<String>,
 ) -> Vec<String> {
     age_files
         .iter()
@@ -129,8 +131,9 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
 
     // Check for missing local files (age exists but no plaintext)
     let age_files = config::list_age_files(&repo_root)?;
-    let local_files = config::list_local_files(slug)?;
-    for name in collect_missing_local_warnings(&age_files, &local_files, &files_to_consider) {
+    let local_set: BTreeSet<String> = config::list_local_files(slug)?.into_iter().collect();
+    let consider_set: BTreeSet<String> = files_to_consider.into_iter().collect();
+    for name in collect_missing_local_warnings(&age_files, &local_set, &consider_set) {
         eprintln!("  {name} — warning: .age exists but no local plaintext, skipping");
     }
 
@@ -148,6 +151,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{collect_missing_local_warnings, should_attempt_smart_compare};
+    use std::collections::BTreeSet;
 
     #[test]
     fn smart_compare_requires_no_force_key_and_existing_age() {
@@ -160,8 +164,8 @@ mod tests {
     #[test]
     fn collect_missing_local_warnings_excludes_considered_files() {
         let age_files = vec!["a.json".to_string(), "b.yml".to_string(), "c.toml".to_string()];
-        let local_files = vec!["a.json".to_string()];
-        let files_to_consider = vec!["b.yml".to_string()];
+        let local_files = BTreeSet::from(["a.json".to_string()]);
+        let files_to_consider = BTreeSet::from(["b.yml".to_string()]);
 
         let warnings = collect_missing_local_warnings(&age_files, &local_files, &files_to_consider);
         assert_eq!(warnings, vec!["c.toml"]);

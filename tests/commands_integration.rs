@@ -1,6 +1,7 @@
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 
 use age::secrecy::ExposeSecret;
 use assert_cmd::Command;
@@ -54,6 +55,41 @@ fn configured_command(repo_dir: &Path, home_dir: &Path) -> Command {
 
 fn local_key_path(home_dir: &Path, slug: &str) -> PathBuf {
     home_dir.join(".a8c-secrets/keys").join(format!("{slug}.key"))
+}
+
+fn cargo_bin_exe() -> PathBuf {
+    let cmd = Command::cargo_bin("a8c-secrets").unwrap();
+    PathBuf::from(cmd.get_program())
+}
+
+fn assert_output_contains_secret_name_rejection(output: &std::process::Output) {
+    let msg = String::from_utf8_lossy(&output.stderr).to_string()
+        + &String::from_utf8_lossy(&output.stdout);
+    assert!(
+        msg.contains("Secret name") || msg.contains("single file name"),
+        "expected basename validation error in output, got: {msg}"
+    );
+}
+
+/// `git` on PATH with `origin` → slug `demo` for integration tests.
+fn git_init_with_demo_origin(repo_dir: &Path) {
+    let status = std::process::Command::new("git")
+        .args(["init", "-q"])
+        .current_dir(repo_dir)
+        .status()
+        .expect("spawn git init");
+    assert!(status.success(), "git init failed (is git installed?)");
+    let status = std::process::Command::new("git")
+        .args([
+            "remote",
+            "add",
+            "origin",
+            "https://github.com/org/demo.git",
+        ])
+        .current_dir(repo_dir)
+        .status()
+        .expect("spawn git remote");
+    assert!(status.success(), "git remote add failed");
 }
 
 #[test]
@@ -221,4 +257,256 @@ fn rotate_dev_rewrites_keys_and_reencrypts_without_old_dev_key() {
         decrypt_with_private(&new_ciphertext, &old_dev_private).is_err(),
         "old dev private key should no longer decrypt rotated file"
     );
+}
+
+#[test]
+fn encrypt_rejects_traversal_in_explicit_filename() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_dir = temp.path().join("repo");
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&repo_dir).unwrap();
+    fs::create_dir_all(&home_dir).unwrap();
+
+    let slug = "demo-repo";
+    write_repo_config(&repo_dir, slug);
+
+    let dev_identity = age::x25519::Identity::generate();
+    let ci_identity = age::x25519::Identity::generate();
+    let dev_private = dev_identity.to_string().expose_secret().to_string();
+    let dev_public = dev_identity.to_public().to_string();
+    let ci_public = ci_identity.to_public().to_string();
+    write_keys_pub(&repo_dir, &dev_public, &ci_public);
+
+    let local_dir = home_dir.join(".a8c-secrets").join(slug);
+    fs::create_dir_all(&local_dir).unwrap();
+    fs::write(local_dir.join("x.txt"), b"x").unwrap();
+
+    let assert = configured_command(&repo_dir, &home_dir)
+        .args(["encrypt", "foo/../x.txt"])
+        .env("A8C_SECRETS_IDENTITY", &dev_private)
+        .assert()
+        .failure();
+    assert_output_contains_secret_name_rejection(assert.get_output());
+}
+
+#[test]
+fn rm_rejects_traversal_in_filename() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_dir = temp.path().join("repo");
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&repo_dir).unwrap();
+    fs::create_dir_all(&home_dir).unwrap();
+
+    write_repo_config(&repo_dir, "demo-repo");
+    let dev_identity = age::x25519::Identity::generate();
+    let ci_identity = age::x25519::Identity::generate();
+    write_keys_pub(
+        &repo_dir,
+        &dev_identity.to_public().to_string(),
+        &ci_identity.to_public().to_string(),
+    );
+
+    let assert = configured_command(&repo_dir, &home_dir)
+        .args(["rm", "a/../b"])
+        .assert()
+        .failure();
+    assert_output_contains_secret_name_rejection(assert.get_output());
+}
+
+#[cfg(unix)]
+#[test]
+fn edit_rejects_traversal_in_filename() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_dir = temp.path().join("repo");
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&repo_dir).unwrap();
+    fs::create_dir_all(&home_dir).unwrap();
+
+    write_repo_config(&repo_dir, "demo-repo");
+    let dev_identity = age::x25519::Identity::generate();
+    let ci_identity = age::x25519::Identity::generate();
+    write_keys_pub(
+        &repo_dir,
+        &dev_identity.to_public().to_string(),
+        &ci_identity.to_public().to_string(),
+    );
+
+    let assert = configured_command(&repo_dir, &home_dir)
+        .env("EDITOR", "true")
+        .args(["edit", "x/../y"])
+        .assert()
+        .failure();
+    assert_output_contains_secret_name_rejection(assert.get_output());
+}
+
+#[test]
+fn status_succeeds_for_configured_repo() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_dir = temp.path().join("repo");
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&repo_dir).unwrap();
+    fs::create_dir_all(&home_dir).unwrap();
+
+    let slug = "demo-repo";
+    write_repo_config(&repo_dir, slug);
+
+    let dev_identity = age::x25519::Identity::generate();
+    let ci_identity = age::x25519::Identity::generate();
+    let dev_private = dev_identity.to_string().expose_secret().to_string();
+    let dev_public = dev_identity.to_public().to_string();
+    let ci_public = ci_identity.to_public().to_string();
+    write_keys_pub(&repo_dir, &dev_public, &ci_public);
+
+    let plaintext = b"x";
+    let ciphertext = encrypt_for(&[dev_public, ci_public], plaintext);
+    fs::write(repo_dir.join(".a8c-secrets/a.txt.age"), ciphertext).unwrap();
+
+    let assert = configured_command(&repo_dir, &home_dir)
+        .arg("status")
+        .env("A8C_SECRETS_IDENTITY", dev_private)
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
+    assert!(stdout.contains("Repo: demo-repo"), "unexpected stdout: {stdout}");
+    assert!(stdout.contains("a.txt"), "unexpected stdout: {stdout}");
+}
+
+#[test]
+fn encrypt_new_plaintext_then_decrypt_roundtrip() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_dir = temp.path().join("repo");
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&repo_dir).unwrap();
+    fs::create_dir_all(&home_dir).unwrap();
+
+    let slug = "demo-repo";
+    write_repo_config(&repo_dir, slug);
+
+    let dev_identity = age::x25519::Identity::generate();
+    let ci_identity = age::x25519::Identity::generate();
+    let dev_private = dev_identity.to_string().expose_secret().to_string();
+    let dev_public = dev_identity.to_public().to_string();
+    let ci_public = ci_identity.to_public().to_string();
+    write_keys_pub(&repo_dir, &dev_public, &ci_public);
+
+    let key_path = local_key_path(&home_dir, slug);
+    fs::create_dir_all(key_path.parent().unwrap()).unwrap();
+    fs::write(&key_path, format!("{dev_private}\n")).unwrap();
+
+    let plaintext = b"roundtrip-plaintext";
+    let local_dir = home_dir.join(".a8c-secrets").join(slug);
+    fs::create_dir_all(&local_dir).unwrap();
+    fs::write(local_dir.join("note.txt"), plaintext).unwrap();
+
+    configured_command(&repo_dir, &home_dir)
+        .args(["encrypt", "note.txt"])
+        .assert()
+        .success();
+
+    assert!(repo_dir
+        .join(".a8c-secrets/note.txt.age")
+        .exists());
+
+    fs::remove_file(local_dir.join("note.txt")).unwrap();
+
+    configured_command(&repo_dir, &home_dir)
+        .args(["decrypt", "--non-interactive"])
+        .assert()
+        .success();
+
+    assert_eq!(fs::read(local_dir.join("note.txt")).unwrap(), plaintext);
+}
+
+#[test]
+fn setup_init_with_git_remote_then_encrypt_decrypt_roundtrip() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_dir = temp.path().join("repo");
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&repo_dir).unwrap();
+    fs::create_dir_all(&home_dir).unwrap();
+
+    git_init_with_demo_origin(&repo_dir);
+
+    let mut child = std::process::Command::new(cargo_bin_exe())
+        .current_dir(&repo_dir)
+        .env("HOME", &home_dir)
+        .env("USERPROFILE", &home_dir)
+        .args(["setup", "init"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn setup init");
+
+    if let Some(mut stdin) = child.stdin.take() {
+        writeln!(stdin, "").unwrap();
+    }
+
+    let status = child.wait().expect("wait on setup init");
+    assert!(status.success(), "setup init should succeed (requires git on PATH)");
+
+    let slug = "demo";
+    assert!(repo_dir.join(".a8c-secrets/config.toml").exists());
+
+    let plaintext = b"e2e-from-init";
+    let local_dir = home_dir.join(".a8c-secrets").join(slug);
+    fs::create_dir_all(&local_dir).unwrap();
+    fs::write(local_dir.join("note.txt"), plaintext).unwrap();
+
+    configured_command(&repo_dir, &home_dir)
+        .args(["encrypt", "note.txt"])
+        .assert()
+        .success();
+
+    fs::remove_file(local_dir.join("note.txt")).unwrap();
+
+    configured_command(&repo_dir, &home_dir)
+        .args(["decrypt", "--non-interactive"])
+        .assert()
+        .success();
+
+    assert_eq!(fs::read(local_dir.join("note.txt")).unwrap(), plaintext);
+}
+
+#[cfg(unix)]
+#[test]
+fn rotate_dev_sets_private_key_file_mode_0600() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    let repo_dir = temp.path().join("repo");
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&repo_dir).unwrap();
+    fs::create_dir_all(&home_dir).unwrap();
+
+    let slug = "demo-repo";
+    write_repo_config(&repo_dir, slug);
+
+    let old_dev_identity = age::x25519::Identity::generate();
+    let ci_identity = age::x25519::Identity::generate();
+    let old_dev_private = old_dev_identity.to_string().expose_secret().to_string();
+    let old_dev_public = old_dev_identity.to_public().to_string();
+    let ci_public = ci_identity.to_public().to_string();
+    write_keys_pub(&repo_dir, &old_dev_public, &ci_public);
+
+    let key_path = local_key_path(&home_dir, slug);
+    fs::create_dir_all(key_path.parent().unwrap()).unwrap();
+    fs::write(&key_path, format!("{old_dev_private}\n")).unwrap();
+
+    let plaintext = b"rotate-me";
+    let ciphertext = encrypt_for(&[old_dev_public.clone(), ci_public.clone()], plaintext);
+    fs::write(
+        repo_dir.join(".a8c-secrets/secret.txt.age"),
+        ciphertext,
+    )
+    .unwrap();
+
+    configured_command(&repo_dir, &home_dir)
+        .args(["keys", "rotate", "--dev"])
+        .assert()
+        .success();
+
+    let mode = fs::metadata(&key_path).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o600, "rotated dev key file should be 0600");
 }

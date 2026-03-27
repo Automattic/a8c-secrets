@@ -44,12 +44,17 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
         );
     }
 
-    // Determine which files to consider
+    // Determine which files to consider (validate basenames before existence
+    // checks so path-like arguments fail with a clear error, not "file not found")
     let files_to_consider = if args.files.is_empty() {
-        config::list_local_files(slug)?
+        let names = config::list_local_files(slug)?;
+        for name in &names {
+            config::validate_secret_basename(name)?;
+        }
+        names
     } else {
-        // Validate that specified files exist locally
         for f in &args.files {
+            config::validate_secret_basename(f)?;
             if !local_dir.join(f).exists() {
                 anyhow::bail!("File not found: {}", local_dir.join(f).display());
             }
@@ -60,10 +65,6 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
     if files_to_consider.is_empty() {
         println!("No files to encrypt.");
         return Ok(());
-    }
-
-    for name in &files_to_consider {
-        config::validate_secret_basename(name)?;
     }
 
     // For smart comparison, we need the private key to decrypt existing .age files.

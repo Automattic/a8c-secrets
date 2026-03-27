@@ -277,9 +277,14 @@ pub fn load_public_keys(repo_root: &Path) -> Result<Vec<String>> {
 
 /// List `.age` file stems in `.a8c-secrets/` (e.g. "google-services.json" from "google-services.json.age").
 ///
+/// Each stem must pass [`validate_secret_basename`] so malicious or mistaken
+/// filenames (e.g. `..age` → stem `..`) cannot cause path traversal when
+/// joined with output paths.
+///
 /// # Errors
 ///
-/// Returns an error if the secrets directory exists but cannot be read.
+/// Returns an error if the secrets directory exists but cannot be read, or if
+/// an `.age` entry has an invalid stem.
 pub fn list_age_files(repo_root: &Path) -> Result<Vec<String>> {
     let dir = repo_root.join(REPO_SECRETS_DIR);
     let mut names = Vec::new();
@@ -290,6 +295,12 @@ pub fn list_age_files(repo_root: &Path) -> Result<Vec<String>> {
         let entry = entry?;
         let name = entry.file_name().to_string_lossy().to_string();
         if let Some(stem) = name.strip_suffix(".age") {
+            validate_secret_basename(stem).with_context(|| {
+                format!(
+                    "Invalid secret name in {}/{} (stem must be a flat basename)",
+                    REPO_SECRETS_DIR, name
+                )
+            })?;
             names.push(stem.to_string());
         }
     }
@@ -299,19 +310,30 @@ pub fn list_age_files(repo_root: &Path) -> Result<Vec<String>> {
 
 /// List plaintext files in `~/.a8c-secrets/<repo>/`.
 ///
+/// Each file name must pass [`validate_secret_basename`], matching rules for
+/// secret basenames under `.a8c-secrets/`.
+///
 /// # Errors
 ///
-/// Returns an error if the local decrypted directory exists but cannot be read.
+/// Returns an error if the local decrypted directory exists but cannot be read,
+/// or if a file name is not a valid flat basename.
 pub fn list_local_files(repo_slug: &str) -> Result<Vec<String>> {
     let dir = decrypted_dir(repo_slug)?;
     let mut names = Vec::new();
     if !dir.exists() {
         return Ok(names);
     }
-    for entry in std::fs::read_dir(&dir)? {
+    for entry in std::fs::read_dir(&dir).with_context(|| format!("Failed to read {}", dir.display()))? {
         let entry = entry?;
         if entry.file_type()?.is_file() {
-            names.push(entry.file_name().to_string_lossy().to_string());
+            let name = entry.file_name().to_string_lossy().to_string();
+            validate_secret_basename(&name).with_context(|| {
+                format!(
+                    "Invalid secret file name in {}: {name}",
+                    dir.display()
+                )
+            })?;
+            names.push(name);
         }
     }
     names.sort();
@@ -589,6 +611,24 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let files = list_age_files(dir.path()).unwrap();
         assert!(files.is_empty());
+    }
+
+    /// `..age` yields stem `..`, which must not be accepted (path traversal).
+    #[cfg(unix)]
+    #[test]
+    fn list_age_files_rejects_dotdot_stem() {
+        let dir = tempfile::tempdir().unwrap();
+        let secrets = dir.path().join(REPO_SECRETS_DIR);
+        fs::create_dir_all(&secrets).unwrap();
+        fs::write(secrets.join("..age"), b"x").unwrap();
+
+        let result = list_age_files(dir.path());
+        assert!(result.is_err());
+        let msg = format!("{}", result.err().unwrap());
+        assert!(
+            msg.contains("Invalid secret name") || msg.contains("Secret name"),
+            "unexpected error: {msg}"
+        );
     }
 
     // -- atomic_write --

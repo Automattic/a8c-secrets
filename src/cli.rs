@@ -41,12 +41,15 @@ errors instead of prompting.
 If any file cannot be decrypted (wrong key, corrupt ciphertext), the command exits
 with a non-zero status after attempting every file.
 
-Orphan detection: if local decrypted files exist with no corresponding .age file
-in the repo, lists them and prompts for removal.",
+Orphan plaintext: if a file exists under ~/.a8c-secrets/<repo>/ but its matching
+.age was removed from the repo (secret dropped from git), decrypt lists these
+orphans. In an interactive terminal session you are prompted before they are
+deleted. With --non-interactive, or when stdin is not a TTY (typical CI), orphan
+files are removed automatically without prompting.",
         after_long_help = "\
 EXAMPLES:
   a8c-secrets decrypt              # Interactive: prompts for key if needed
-  a8c-secrets decrypt --non-interactive  # CI: errors on missing key
+  a8c-secrets decrypt --non-interactive  # CI: no key prompt; orphans removed without asking
 
 ENVIRONMENT:
   A8C_SECRETS_IDENTITY    Overrides the private key (see top-level --help)"

@@ -89,6 +89,8 @@ In the repo (committed):              On the developer's machine (never in git):
 
 **Secret file names.** Each secret is a single filename (e.g. `Secrets.swift`), not a relative path. The `edit`, `encrypt <file …>`, and `rm` commands reject names that contain path separators, `..`, or other non-flat syntax so outputs stay under `.a8c-secrets/` and `~/.a8c-secrets/<repo>/`.
 
+**Decrypt and orphan plaintext.** If a file still exists under `~/.a8c-secrets/<repo>/` but its `.age` was removed from the repository (for example the team deleted a secret from git), `decrypt` reports these as orphans. In an interactive session it asks before deleting the stale local copies. With `--non-interactive`, or when stdin is not a TTY (common in CI), those orphan files are **removed automatically** without a prompt—so CI does not hang waiting for input.
+
 ## Key rotation
 
 On employee offboarding:

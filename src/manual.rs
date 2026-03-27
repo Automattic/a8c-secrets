@@ -63,6 +63,12 @@ GETTING STARTED
         a8c-secrets encrypt          # Encrypt any modified files
         git add .a8c-secrets/        # Commit encrypted changes
 
+    Orphan plaintext (after decrypt): if a decrypted file still exists under
+    ~/.a8c-secrets/<repo>/ but its .age was removed from the repo, decrypt
+    lists it and asks whether to delete the local copy (interactive only).
+    With --non-interactive or in CI (no TTY), those files are removed
+    automatically without prompting.
+
 COMMANDS
     Daily operations:
         decrypt [--non-interactive]       Decrypt .age files to ~/.a8c-secrets/<repo>/

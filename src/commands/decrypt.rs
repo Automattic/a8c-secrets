@@ -49,6 +49,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
     // Ensure output directory exists with correct permissions
     let out_dir = config::decrypted_dir(slug)?;
     std::fs::create_dir_all(&out_dir)?;
+    permissions::set_secure_dir_permissions(&out_dir)?;
 
     let secrets_dir = repo_root.join(REPO_SECRETS_DIR);
     let mut decrypted_count = 0;

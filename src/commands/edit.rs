@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use crate::cli::EditArgs;
 use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::CryptoEngine;
+use crate::permissions;
 
 fn default_editor() -> String {
     if cfg!(windows) {
@@ -30,6 +31,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
 
     let local_dir = config::decrypted_dir(slug)?;
     std::fs::create_dir_all(&local_dir)?;
+    permissions::set_secure_dir_permissions(&local_dir)?;
     let local_path = local_dir.join(&args.file);
 
     // If file doesn't exist, prompt to create

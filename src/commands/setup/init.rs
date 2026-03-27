@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 
 use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::CryptoEngine;
+use crate::permissions;
 
 /// Initialize `a8c-secrets` in the current repository.
 ///
@@ -73,6 +74,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     // Create the decrypted files directory
     let decrypted = config::decrypted_dir(&slug)?;
     std::fs::create_dir_all(&decrypted)?;
+    permissions::set_secure_dir_permissions(&decrypted)?;
 
     // Print summary
     println!();

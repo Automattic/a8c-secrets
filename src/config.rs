@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use age::secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
-use std::io::Write;
+use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::{Component, Path, PathBuf};
 
 use crate::permissions;
@@ -182,6 +182,9 @@ pub fn save_private_key(repo_slug: &str, private_key: &SecretString) -> Result<P
 /// Prints guidance, reads the key without terminal echo, writes it securely,
 /// and reports whether the key was newly saved or updated.
 ///
+/// When stdin is not a terminal (e.g. piped input in CI), reads a line from
+/// stdin instead of using hidden terminal input.
+///
 /// # Errors
 ///
 /// Returns an error if terminal input fails, key validation fails, or key
@@ -193,12 +196,14 @@ pub fn prompt_and_import_private_key(slug: &str) -> Result<SecretString> {
     println!("  https://mc.a8c.com/secret-store/  (look for: a8c-secrets/{slug})");
     println!();
 
-    let key = SecretString::new(
+    let raw = if io::stdin().is_terminal() {
         rpassword::prompt_password("Paste private key: ")?
-            .trim()
-            .to_string()
-            .into(),
-    );
+    } else {
+        let mut line = String::new();
+        io::stdin().lock().read_line(&mut line)?;
+        line
+    };
+    let key = SecretString::new(raw.trim().to_string().into());
 
     let key_path = private_key_path(slug)?;
     let existed = key_path.exists();

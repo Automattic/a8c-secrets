@@ -510,3 +510,140 @@ fn rotate_dev_sets_private_key_file_mode_0600() {
     let mode = fs::metadata(&key_path).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode, 0o600, "rotated dev key file should be 0600");
 }
+
+#[test]
+fn setup_completions_bash_outputs_script() {
+    let temp = tempfile::tempdir().unwrap();
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&home_dir).unwrap();
+
+    let assert = Command::cargo_bin("a8c-secrets")
+        .unwrap()
+        .current_dir(temp.path())
+        .env("HOME", &home_dir)
+        .env("USERPROFILE", &home_dir)
+        .args(["setup", "completions", "bash"])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
+    assert!(
+        stdout.contains("a8c-secrets"),
+        "expected completion script to reference binary, got: {stdout}"
+    );
+}
+
+#[test]
+fn setup_completions_zsh_outputs_script() {
+    let temp = tempfile::tempdir().unwrap();
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&home_dir).unwrap();
+
+    let assert = Command::cargo_bin("a8c-secrets")
+        .unwrap()
+        .current_dir(temp.path())
+        .env("HOME", &home_dir)
+        .env("USERPROFILE", &home_dir)
+        .args(["setup", "completions", "zsh"])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
+    assert!(
+        stdout.contains("a8c-secrets"),
+        "expected zsh completion to reference binary, got: {stdout}"
+    );
+}
+
+#[test]
+fn setup_nuke_removes_repo_secrets_home_key_and_decrypted_dir() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_dir = temp.path().join("repo");
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&repo_dir).unwrap();
+    fs::create_dir_all(&home_dir).unwrap();
+
+    let slug = "demo-repo";
+    write_repo_config(&repo_dir, slug);
+    fs::write(repo_dir.join(".a8c-secrets/placeholder.age"), b"x").unwrap();
+
+    let key_path = local_key_path(&home_dir, slug);
+    fs::create_dir_all(key_path.parent().unwrap()).unwrap();
+    fs::write(&key_path, b"AGE-SECRET-KEY-1PLACEHOLDER\n").unwrap();
+
+    let decrypted = home_dir.join(".a8c-secrets").join(slug);
+    fs::create_dir_all(&decrypted).unwrap();
+    fs::write(decrypted.join("local.txt"), b"plain").unwrap();
+
+    let mut child = std::process::Command::new(cargo_bin_exe())
+        .current_dir(&repo_dir)
+        .env("HOME", &home_dir)
+        .env("USERPROFILE", &home_dir)
+        .args(["setup", "nuke"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn setup nuke");
+
+    if let Some(mut stdin) = child.stdin.take() {
+        writeln!(stdin, "{slug}").unwrap();
+    }
+
+    let status = child.wait().expect("wait on setup nuke");
+    assert!(status.success(), "setup nuke should succeed");
+
+    assert!(
+        !repo_dir.join(".a8c-secrets").exists(),
+        "in-repo .a8c-secrets should be removed"
+    );
+    assert!(!key_path.exists(), "private key file should be removed");
+    assert!(!decrypted.exists(), "decrypted directory should be removed");
+}
+
+#[test]
+fn keys_import_writes_private_key_from_stdin() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_dir = temp.path().join("repo");
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&repo_dir).unwrap();
+    fs::create_dir_all(&home_dir).unwrap();
+
+    let slug = "demo-repo";
+    write_repo_config(&repo_dir, slug);
+
+    let dev_identity = age::x25519::Identity::generate();
+    let ci_identity = age::x25519::Identity::generate();
+    write_keys_pub(
+        &repo_dir,
+        &dev_identity.to_public().to_string(),
+        &ci_identity.to_public().to_string(),
+    );
+
+    let private_key = dev_identity.to_string().expose_secret().to_string();
+    assert!(private_key.starts_with("AGE-SECRET-KEY-"));
+
+    let key_path = local_key_path(&home_dir, slug);
+    assert!(!key_path.exists());
+
+    let mut child = std::process::Command::new(cargo_bin_exe())
+        .current_dir(&repo_dir)
+        .env("HOME", &home_dir)
+        .env("USERPROFILE", &home_dir)
+        .args(["keys", "import"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn keys import");
+
+    if let Some(mut stdin) = child.stdin.take() {
+        writeln!(stdin, "{private_key}").unwrap();
+    }
+
+    let status = child.wait().expect("wait on keys import");
+    assert!(status.success(), "keys import should succeed");
+
+    let saved = fs::read_to_string(&key_path).unwrap();
+    assert_eq!(saved.trim(), private_key.trim());
+}

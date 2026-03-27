@@ -63,13 +63,16 @@ pub fn find_repo_root() -> Result<PathBuf> {
 ///
 /// # Errors
 ///
-/// Returns an error if the config file cannot be read or parsed as TOML.
+/// Returns an error if the config file cannot be read or parsed as TOML, or
+/// if `repo` is not a valid slug.
 pub fn load_repo_config(repo_root: &Path) -> Result<RepoConfig> {
     let path = repo_config_path(repo_root);
     let content = std::fs::read_to_string(&path)
         .with_context(|| format!("Failed to read {}", path.display()))?;
     let config: RepoConfig = toml::from_str(&content)
         .with_context(|| format!("Failed to parse {}", path.display()))?;
+    validate_repo_slug(&config.repo)
+        .with_context(|| format!("Invalid repo slug in {}", path.display()))?;
     Ok(config)
 }
 
@@ -101,6 +104,35 @@ pub fn decrypted_dir(repo_slug: &str) -> Result<PathBuf> {
     Ok(secrets_home()?.join(repo_slug))
 }
 
+fn validate_single_path_segment(name: &str, what: &'static str) -> Result<()> {
+    if name.is_empty() {
+        anyhow::bail!("{what} cannot be empty");
+    }
+    if name.contains('\0') {
+        anyhow::bail!("{what} cannot contain NUL bytes");
+    }
+    if name.contains('\\') {
+        anyhow::bail!("{what} must not contain path separators");
+    }
+    let path = Path::new(name);
+    let mut components = path.components();
+    let first = components
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("{what} cannot be empty"))?;
+    if components.next().is_some() {
+        anyhow::bail!("{what} must be a single file name (no paths or `..`)");
+    }
+    match first {
+        Component::Normal(os) => {
+            if os.to_str().is_none() {
+                anyhow::bail!("{what} must be valid Unicode");
+            }
+            Ok(())
+        }
+        _ => anyhow::bail!("{what} must be a single file name (no paths or `..`)"),
+    }
+}
+
 /// Ensure `name` is a single non-empty path segment (a flat secret basename).
 ///
 /// Rejects empty strings, `.`, `..`, path separators, multiple components, and
@@ -111,32 +143,19 @@ pub fn decrypted_dir(repo_slug: &str) -> Result<PathBuf> {
 ///
 /// Returns an error if `name` is not a valid secret file stem.
 pub fn validate_secret_basename(name: &str) -> Result<()> {
-    if name.is_empty() {
-        anyhow::bail!("Secret name cannot be empty");
-    }
-    if name.contains('\0') {
-        anyhow::bail!("Secret name cannot contain NUL bytes");
-    }
-    if name.contains('\\') {
-        anyhow::bail!("Secret name must not contain path separators");
-    }
-    let path = Path::new(name);
-    let mut components = path.components();
-    let first = components
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("Secret name cannot be empty"))?;
-    if components.next().is_some() {
-        anyhow::bail!("Secret name must be a single file name (no paths or `..`)");
-    }
-    match first {
-        Component::Normal(os) => {
-            if os.to_str().is_none() {
-                anyhow::bail!("Secret name must be valid Unicode");
-            }
-            Ok(())
-        }
-        _ => anyhow::bail!("Secret name must be a single file name (no paths or `..`)"),
-    }
+    validate_single_path_segment(name, "Secret name")
+}
+
+/// Ensure `slug` is safe to use as a single directory/file name under `~/.a8c-secrets/`.
+///
+/// Uses the same rules as [`validate_secret_basename`] so a repo slug cannot
+/// traverse paths or escape the secrets home directory.
+///
+/// # Errors
+///
+/// Returns an error if `slug` is not a valid repo identifier.
+pub fn validate_repo_slug(slug: &str) -> Result<()> {
+    validate_single_path_segment(slug, "Repo slug")
 }
 
 /// Read the private key, checking `A8C_SECRETS_IDENTITY` env var first,
@@ -430,6 +449,22 @@ mod tests {
         );
     }
 
+    // -- validate_repo_slug --
+
+    #[test]
+    fn validate_repo_slug_accepts_typical_slugs() {
+        validate_repo_slug("wordpress-ios").unwrap();
+        validate_repo_slug("pocket-casts-android").unwrap();
+        validate_repo_slug("my-app").unwrap();
+    }
+
+    #[test]
+    fn validate_repo_slug_rejects_path_traversal() {
+        assert!(validate_repo_slug("..").is_err());
+        assert!(validate_repo_slug("../foo").is_err());
+        assert!(validate_repo_slug("foo/bar").is_err());
+    }
+
     // -- validate_secret_basename --
 
     #[test]
@@ -484,6 +519,26 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let result = load_repo_config(dir.path());
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn load_repo_config_rejects_invalid_repo_slug() {
+        let dir = tempfile::tempdir().unwrap();
+        let secrets = dir.path().join(REPO_SECRETS_DIR);
+        fs::create_dir_all(&secrets).unwrap();
+        fs::write(
+            secrets.join("config.toml"),
+            "repo = \"../evil\"\n",
+        )
+        .unwrap();
+
+        let result = load_repo_config(dir.path());
+        let err = result.err().expect("expected invalid slug to be rejected");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("Invalid repo slug") || msg.contains("Repo slug"),
+            "unexpected error: {msg}"
+        );
     }
 
     // -- load_public_keys --

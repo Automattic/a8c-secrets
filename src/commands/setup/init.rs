@@ -48,6 +48,8 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
         input
     };
 
+    config::validate_repo_slug(&slug)?;
+
     // Generate dev and CI key pairs
     let (dev_private, dev_public) = crypto_engine.keygen()?;
     let (ci_private, ci_public) = crypto_engine.keygen()?;

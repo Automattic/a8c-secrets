@@ -31,10 +31,13 @@ fmt:
 	cargo fmt
 
 lint:
-	cargo clippy -- --deny warnings
+	cargo clippy --all-targets -- --deny warnings
 
 lint-pedantic:
-	cargo clippy -- --warn clippy::pedantic --warn missing_docs --deny warnings
+	cargo clippy --all-targets -- --warn clippy::pedantic --warn missing_docs --deny warnings
 
 lint-fix:
 	cargo clippy --fix -- --deny warnings --allow clippy::pedantic
+
+doc:
+	cargo doc --no-deps

@@ -214,7 +214,7 @@ mod tests {
         let (_, public) = engine.keygen().unwrap();
         let plaintext = b"same content";
 
-        let ct1 = engine.encrypt(plaintext, &[public.clone()]).unwrap();
+        let ct1 = engine.encrypt(plaintext, std::slice::from_ref(&public)).unwrap();
         let ct2 = engine.encrypt(plaintext, &[public]).unwrap();
         assert_ne!(ct1, ct2, "age uses random nonces, so ciphertext should differ");
     }

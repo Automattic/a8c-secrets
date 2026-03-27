@@ -23,9 +23,37 @@ pub fn secret_store_entry_name(slug: &str, for_ci: bool) -> String {
     }
 }
 
-/// Contents of `.a8c-secrets/config.toml`.
+/// Metadata for an `a8c-secrets`-enabled repository, stored as TOML in the
+/// [`REPO_SECRETS_DIR`] subdirectory (`config.toml`) at the git repository root.
+///
+/// The file is normally created by `a8c-secrets setup init` and committed. The
+/// slug drives local-only paths under the user home: decrypted files live in
+/// `~/.a8c-secrets/<repo>/`, and the dev private key in
+/// `~/.a8c-secrets/keys/<repo>.key`. It also appears in Secret Store entry name
+/// hints (see [`secret_store_entry_name`]).
+///
+/// # `config.toml` schema
+///
+/// Single top-level string field, no table header:
+///
+/// ```toml
+/// repo = "wordpress-ios"
+/// ```
+///
+/// Only `repo` is defined today. Extra keys are ignored by the current
+/// deserializer; keep the file to that single field for clarity.
+///
+/// # `repo` field rules
+///
+/// Must be a safe single path segment: see [`validate_repo_slug`]. In practice
+/// use a short name aligned with the GitHub repository (often lowercase with
+/// hyphens). Values containing `/`, `..`, backslashes, or NUL are rejected when
+/// the config is loaded so paths under `~/.a8c-secrets/` cannot escape that tree.
 #[derive(Deserialize, Serialize)]
 pub struct RepoConfig {
+    /// Short repository identifier (slug), e.g. `wordpress-ios`.
+    ///
+    /// Must pass [`validate_repo_slug`] when read via [`load_repo_config`].
     pub repo: String,
 }
 
@@ -59,17 +87,23 @@ pub fn find_repo_root() -> Result<PathBuf> {
     }
 }
 
-/// Load the repo config from `.a8c-secrets/config.toml`.
+/// Load and validate `config.toml` in the [`REPO_SECRETS_DIR`] directory.
+///
+/// Parses the [`RepoConfig`] schema and ensures `repo` satisfies
+/// [`validate_repo_slug`].
 ///
 /// # Errors
 ///
-/// Returns an error if the config file cannot be read or parsed as TOML.
+/// Returns an error if the file cannot be read, TOML parsing fails, or `repo`
+/// is not a valid slug (see [`RepoConfig`]).
 pub fn load_repo_config(repo_root: &Path) -> Result<RepoConfig> {
     let path = repo_config_path(repo_root);
     let content = std::fs::read_to_string(&path)
         .with_context(|| format!("Failed to read {}", path.display()))?;
     let config: RepoConfig = toml::from_str(&content)
         .with_context(|| format!("Failed to parse {}", path.display()))?;
+    validate_repo_slug(&config.repo)
+        .with_context(|| format!("Invalid repo slug in {}", path.display()))?;
     Ok(config)
 }
 
@@ -101,6 +135,35 @@ pub fn decrypted_dir(repo_slug: &str) -> Result<PathBuf> {
     Ok(secrets_home()?.join(repo_slug))
 }
 
+fn validate_single_path_segment(name: &str, what: &'static str) -> Result<()> {
+    if name.is_empty() {
+        anyhow::bail!("{what} cannot be empty");
+    }
+    if name.contains('\0') {
+        anyhow::bail!("{what} cannot contain NUL bytes");
+    }
+    if name.contains('\\') {
+        anyhow::bail!("{what} must not contain path separators");
+    }
+    let path = Path::new(name);
+    let mut components = path.components();
+    let first = components
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("{what} cannot be empty"))?;
+    if components.next().is_some() {
+        anyhow::bail!("{what} must be a single file name (no paths or `..`)");
+    }
+    match first {
+        Component::Normal(os) => {
+            if os.to_str().is_none() {
+                anyhow::bail!("{what} must be valid Unicode");
+            }
+            Ok(())
+        }
+        _ => anyhow::bail!("{what} must be a single file name (no paths or `..`)"),
+    }
+}
+
 /// Ensure `name` is a single non-empty path segment (a flat secret basename).
 ///
 /// Rejects empty strings, `.`, `..`, path separators, multiple components, and
@@ -111,32 +174,19 @@ pub fn decrypted_dir(repo_slug: &str) -> Result<PathBuf> {
 ///
 /// Returns an error if `name` is not a valid secret file stem.
 pub fn validate_secret_basename(name: &str) -> Result<()> {
-    if name.is_empty() {
-        anyhow::bail!("Secret name cannot be empty");
-    }
-    if name.contains('\0') {
-        anyhow::bail!("Secret name cannot contain NUL bytes");
-    }
-    if name.contains('\\') {
-        anyhow::bail!("Secret name must not contain path separators");
-    }
-    let path = Path::new(name);
-    let mut components = path.components();
-    let first = components
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("Secret name cannot be empty"))?;
-    if components.next().is_some() {
-        anyhow::bail!("Secret name must be a single file name (no paths or `..`)");
-    }
-    match first {
-        Component::Normal(os) => {
-            if os.to_str().is_none() {
-                anyhow::bail!("Secret name must be valid Unicode");
-            }
-            Ok(())
-        }
-        _ => anyhow::bail!("Secret name must be a single file name (no paths or `..`)"),
-    }
+    validate_single_path_segment(name, "Secret name")
+}
+
+/// Ensure `slug` is safe to use as a single directory/file name under `~/.a8c-secrets/`.
+///
+/// Uses the same rules as [`validate_secret_basename`] so a repo slug cannot
+/// traverse paths or escape the secrets home directory.
+///
+/// # Errors
+///
+/// Returns an error if `slug` is not a valid repo identifier.
+pub fn validate_repo_slug(slug: &str) -> Result<()> {
+    validate_single_path_segment(slug, "Repo slug")
 }
 
 /// Read the private key, checking `A8C_SECRETS_IDENTITY` env var first,
@@ -258,9 +308,14 @@ pub fn load_public_keys(repo_root: &Path) -> Result<Vec<String>> {
 
 /// List `.age` file stems in `.a8c-secrets/` (e.g. "google-services.json" from "google-services.json.age").
 ///
+/// Each stem must pass [`validate_secret_basename`] so malicious or mistaken
+/// filenames (e.g. `..age` → stem `..`) cannot cause path traversal when
+/// joined with output paths.
+///
 /// # Errors
 ///
-/// Returns an error if the secrets directory exists but cannot be read.
+/// Returns an error if the secrets directory exists but cannot be read, or if
+/// an `.age` entry has an invalid stem.
 pub fn list_age_files(repo_root: &Path) -> Result<Vec<String>> {
     let dir = repo_root.join(REPO_SECRETS_DIR);
     let mut names = Vec::new();
@@ -271,6 +326,12 @@ pub fn list_age_files(repo_root: &Path) -> Result<Vec<String>> {
         let entry = entry?;
         let name = entry.file_name().to_string_lossy().to_string();
         if let Some(stem) = name.strip_suffix(".age") {
+            validate_secret_basename(stem).with_context(|| {
+                format!(
+                    "Invalid secret name in {}/{} (stem must be a flat basename)",
+                    REPO_SECRETS_DIR, name
+                )
+            })?;
             names.push(stem.to_string());
         }
     }
@@ -280,19 +341,30 @@ pub fn list_age_files(repo_root: &Path) -> Result<Vec<String>> {
 
 /// List plaintext files in `~/.a8c-secrets/<repo>/`.
 ///
+/// Each file name must pass [`validate_secret_basename`], matching rules for
+/// secret basenames under `.a8c-secrets/`.
+///
 /// # Errors
 ///
-/// Returns an error if the local decrypted directory exists but cannot be read.
+/// Returns an error if the local decrypted directory exists but cannot be read,
+/// or if a file name is not a valid flat basename.
 pub fn list_local_files(repo_slug: &str) -> Result<Vec<String>> {
     let dir = decrypted_dir(repo_slug)?;
     let mut names = Vec::new();
     if !dir.exists() {
         return Ok(names);
     }
-    for entry in std::fs::read_dir(&dir)? {
+    for entry in std::fs::read_dir(&dir).with_context(|| format!("Failed to read {}", dir.display()))? {
         let entry = entry?;
         if entry.file_type()?.is_file() {
-            names.push(entry.file_name().to_string_lossy().to_string());
+            let name = entry.file_name().to_string_lossy().to_string();
+            validate_secret_basename(&name).with_context(|| {
+                format!(
+                    "Invalid secret file name in {}: {name}",
+                    dir.display()
+                )
+            })?;
+            names.push(name);
         }
     }
     names.sort();
@@ -430,6 +502,22 @@ mod tests {
         );
     }
 
+    // -- validate_repo_slug --
+
+    #[test]
+    fn validate_repo_slug_accepts_typical_slugs() {
+        validate_repo_slug("wordpress-ios").unwrap();
+        validate_repo_slug("pocket-casts-android").unwrap();
+        validate_repo_slug("my-app").unwrap();
+    }
+
+    #[test]
+    fn validate_repo_slug_rejects_path_traversal() {
+        assert!(validate_repo_slug("..").is_err());
+        assert!(validate_repo_slug("../foo").is_err());
+        assert!(validate_repo_slug("foo/bar").is_err());
+    }
+
     // -- validate_secret_basename --
 
     #[test]
@@ -486,6 +574,26 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[test]
+    fn load_repo_config_rejects_invalid_repo_slug() {
+        let dir = tempfile::tempdir().unwrap();
+        let secrets = dir.path().join(REPO_SECRETS_DIR);
+        fs::create_dir_all(&secrets).unwrap();
+        fs::write(
+            secrets.join("config.toml"),
+            "repo = \"../evil\"\n",
+        )
+        .unwrap();
+
+        let result = load_repo_config(dir.path());
+        let err = result.err().expect("expected invalid slug to be rejected");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("Invalid repo slug") || msg.contains("Repo slug"),
+            "unexpected error: {msg}"
+        );
+    }
+
     // -- load_public_keys --
 
     #[test]
@@ -534,6 +642,24 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let files = list_age_files(dir.path()).unwrap();
         assert!(files.is_empty());
+    }
+
+    /// `..age` yields stem `..`, which must not be accepted (path traversal).
+    #[cfg(unix)]
+    #[test]
+    fn list_age_files_rejects_dotdot_stem() {
+        let dir = tempfile::tempdir().unwrap();
+        let secrets = dir.path().join(REPO_SECRETS_DIR);
+        fs::create_dir_all(&secrets).unwrap();
+        fs::write(secrets.join("..age"), b"x").unwrap();
+
+        let result = list_age_files(dir.path());
+        assert!(result.is_err());
+        let msg = format!("{}", result.err().unwrap());
+        assert!(
+            msg.contains("Invalid secret name") || msg.contains("Secret name"),
+            "unexpected error: {msg}"
+        );
     }
 
     // -- atomic_write --

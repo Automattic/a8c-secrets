@@ -5,7 +5,7 @@ use clap_complete::Shell;
 ///
 /// Wraps the `age` encryption library to encrypt/decrypt secret files,
 /// keeping decrypted secrets outside the repository working tree in
-/// ~/.a8c-secrets/<repo>/, protecting them from accidental commits.
+/// `~/.a8c-secrets/<repo>/`, protecting them from accidental commits.
 ///
 /// Use `a8c-secrets manual` for a comprehensive guide.
 #[derive(Debug, Parser)]
@@ -29,7 +29,7 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Decrypt all secret files into ~/.a8c-secrets/<repo>/
+    /// Decrypt all secret files into `~/.a8c-secrets/<repo>/`
     #[command(
         long_about = "\
 Decrypt all .age files from .a8c-secrets/ into ~/.a8c-secrets/<repo>/.

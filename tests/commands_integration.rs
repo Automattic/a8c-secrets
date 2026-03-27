@@ -533,7 +533,7 @@ fn setup_init_with_git_remote_then_encrypt_decrypt_roundtrip() {
         .expect("spawn setup init");
 
     if let Some(mut stdin) = child.stdin.take() {
-        writeln!(stdin, "").unwrap();
+        writeln!(stdin).unwrap();
     }
 
     let status = child.wait().expect("wait on setup init");

@@ -23,9 +23,37 @@ pub fn secret_store_entry_name(slug: &str, for_ci: bool) -> String {
     }
 }
 
-/// Contents of `.a8c-secrets/config.toml`.
+/// Metadata for an `a8c-secrets`-enabled repository, stored as TOML in the
+/// [`REPO_SECRETS_DIR`] subdirectory (`config.toml`) at the git repository root.
+///
+/// The file is normally created by `a8c-secrets setup init` and committed. The
+/// slug drives local-only paths under the user home: decrypted files live in
+/// `~/.a8c-secrets/<repo>/`, and the dev private key in
+/// `~/.a8c-secrets/keys/<repo>.key`. It also appears in Secret Store entry name
+/// hints (see [`secret_store_entry_name`]).
+///
+/// # `config.toml` schema
+///
+/// Single top-level string field, no table header:
+///
+/// ```toml
+/// repo = "wordpress-ios"
+/// ```
+///
+/// Only `repo` is defined today. Extra keys are ignored by the current
+/// deserializer; keep the file to that single field for clarity.
+///
+/// # `repo` field rules
+///
+/// Must be a safe single path segment: see [`validate_repo_slug`]. In practice
+/// use a short name aligned with the GitHub repository (often lowercase with
+/// hyphens). Values containing `/`, `..`, backslashes, or NUL are rejected when
+/// the config is loaded so paths under `~/.a8c-secrets/` cannot escape that tree.
 #[derive(Deserialize, Serialize)]
 pub struct RepoConfig {
+    /// Short repository identifier (slug), e.g. `wordpress-ios`.
+    ///
+    /// Must pass [`validate_repo_slug`] when read via [`load_repo_config`].
     pub repo: String,
 }
 
@@ -59,12 +87,15 @@ pub fn find_repo_root() -> Result<PathBuf> {
     }
 }
 
-/// Load the repo config from `.a8c-secrets/config.toml`.
+/// Load and validate `config.toml` in the [`REPO_SECRETS_DIR`] directory.
+///
+/// Parses the [`RepoConfig`] schema and ensures `repo` satisfies
+/// [`validate_repo_slug`].
 ///
 /// # Errors
 ///
-/// Returns an error if the config file cannot be read or parsed as TOML, or
-/// if `repo` is not a valid slug.
+/// Returns an error if the file cannot be read, TOML parsing fails, or `repo`
+/// is not a valid slug (see [`RepoConfig`]).
 pub fn load_repo_config(repo_root: &Path) -> Result<RepoConfig> {
     let path = repo_config_path(repo_root);
     let content = std::fs::read_to_string(&path)

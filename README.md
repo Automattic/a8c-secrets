@@ -81,6 +81,8 @@ In the repo (committed):              On the developer's machine (never in git):
 
 **Two key pairs per repo (dev + CI).** The dev private key is shared by all developers via Secret Store. The CI private key is injected as a Buildkite secret via `A8C_SECRETS_IDENTITY`. Key identification uses public key derivation (matching your private key against `keys.pub`), not comment labels — so `# dev` / `# ci` comments are for humans only.
 
+**Secret Store entry names** (human-created; replace `<repo>` with your repo slug): dev private key → `a8c-secrets dev private key for <repo>`; CI private key → `a8c-secrets CI private key for <repo>`.
+
 **Smart encryption.** Since `age` uses random nonces, encrypting identical content twice produces different ciphertext. The `encrypt` command decrypts existing `.age` files in memory and compares byte-for-byte with local plaintext, only re-encrypting when content actually changed. This prevents noisy git diffs. Use `--force` after key rotation.
 
 **Flat file structure.** No subdirectories inside `.a8c-secrets/`. Name collisions (e.g. two `google-services.json` for different modules) are handled with unique flat names like `wear-google-services.json`.
@@ -92,7 +94,7 @@ In the repo (committed):              On the developer's machine (never in git):
 On employee offboarding:
 
 1. `a8c-secrets keys rotate --dev`
-2. Update Secret Store with the new dev private key
+2. Update the Secret Store entry `a8c-secrets dev private key for <repo>` with the new dev private key
 3. Rotate the actual secret values (API keys, tokens) — this is a manual step outside the tool's scope
 4. Commit updated `keys.pub` and `.age` files
 5. Team runs: `a8c-secrets keys import && a8c-secrets decrypt`

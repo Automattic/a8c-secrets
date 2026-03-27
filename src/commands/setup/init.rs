@@ -93,9 +93,17 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     println!();
     println!("Next steps:");
     println!("  1. Add the dev private key to Secret Store:");
-    println!("     https://mc.a8c.com/secret-store/  (create entry: a8c-secrets/{slug})");
+    println!(
+        "     {}  (create entry: {})",
+        config::SECRET_STORE_BASE_URL,
+        config::secret_store_entry_name(&slug, false)
+    );
     println!("  2. Add the CI private key to Buildkite secrets");
     println!("     (coordinate with Apps Infra for the A8C_SECRETS_IDENTITY env var)");
+    println!(
+        "     Optional — Secret Store entry name for CI: {}",
+        config::secret_store_entry_name(&slug, true)
+    );
     println!("  3. Commit .a8c-secrets/config.toml and .a8c-secrets/keys.pub");
     println!("  4. Add secret files with `a8c-secrets edit <filename>`");
     println!();

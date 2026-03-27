@@ -59,7 +59,9 @@ pub fn run() -> Result<()> {
     println!("Nuked a8c-secrets for '{slug}'.");
     println!();
     println!("Reminders:");
-    println!("  - Remove the Secret Store entry (a8c-secrets/{slug}) if no longer needed");
+    println!("  - Remove Secret Store entries for this repo if no longer needed:");
+    println!("      {}", config::secret_store_entry_name(slug, false));
+    println!("      {}", config::secret_store_entry_name(slug, true));
     println!("  - Remove the Buildkite A8C_SECRETS_IDENTITY secret if applicable");
     println!("  - Commit the deletion of {REPO_SECRETS_DIR}/");
 

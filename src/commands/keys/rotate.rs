@@ -98,12 +98,18 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &RotateArgs) -> Result<()> {
 
     if args.dev {
         println!("Next steps:");
-        println!("  1. Update Secret Store (a8c-secrets/{slug}) with the new dev private key");
+        println!(
+            "  1. Update Secret Store entry {} with the new dev private key",
+            config::secret_store_entry_name(slug, false)
+        );
         println!("  2. Notify team to run `a8c-secrets keys import`");
         println!("  3. Commit the updated keys.pub and .age files");
     } else {
         println!("Next steps:");
-        println!("  1. Update Secret Store (a8c-secrets/{slug}-ci) with the new CI private key");
+        println!(
+            "  1. Update Secret Store entry {} with the new CI private key",
+            config::secret_store_entry_name(slug, true)
+        );
         println!("  2. Update Buildkite A8C_SECRETS_IDENTITY secret");
         println!("  3. Commit the updated keys.pub and .age files");
     }

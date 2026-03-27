@@ -98,13 +98,17 @@ KEY MANAGEMENT
         dev   Shared by all developers. Private key in Secret Store.
         ci    Used by CI agents (Buildkite). Private key in Buildkite secrets.
 
+    Secret Store entry names (typical convention; <repo> is the repo slug):
+        a8c-secrets dev private key for <repo>
+        a8c-secrets CI private key for <repo>
+
     The tool identifies which key is "dev" by deriving the public key from
     your local private key and matching it against entries in keys.pub.
     Comment labels (# dev, # ci) are for humans — the tool doesn't rely on them.
 
     Key rotation (employee offboarding):
         1. a8c-secrets keys rotate --dev
-        2. Update Secret Store with the new dev private key
+        2. Update Secret Store entry "a8c-secrets dev private key for <repo>" with the new dev private key
         3. Rotate actual secret values (API keys, tokens) — manual step
         4. Commit updated keys.pub and .age files
         5. Team runs: a8c-secrets keys import && a8c-secrets decrypt

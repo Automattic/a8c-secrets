@@ -11,6 +11,18 @@ pub const REPO_SECRETS_DIR: &str = ".a8c-secrets";
 /// Name of the local home directory used to store private/decrypted secrets.
 pub const HOME_SECRETS_DIR: &str = ".a8c-secrets";
 
+/// Base URL for Secret Store (browse / create entries).
+pub const SECRET_STORE_BASE_URL: &str = "https://mc.a8c.com/secret-store/";
+
+/// Human-readable Secret Store entry name for the dev or CI private key.
+pub fn secret_store_entry_name(slug: &str, for_ci: bool) -> String {
+    if for_ci {
+        format!("a8c-secrets CI private key for {slug}")
+    } else {
+        format!("a8c-secrets dev private key for {slug}")
+    }
+}
+
 /// Contents of `.a8c-secrets/config.toml`.
 #[derive(Deserialize, Serialize)]
 pub struct RepoConfig {
@@ -193,7 +205,11 @@ pub fn prompt_and_import_private_key(slug: &str) -> Result<SecretString> {
     println!("Import private key for '{slug}'");
     println!();
     println!("Get the dev private key from Secret Store:");
-    println!("  https://mc.a8c.com/secret-store/  (look for: a8c-secrets/{slug})");
+    println!(
+        "  {}  (look for: {})",
+        SECRET_STORE_BASE_URL,
+        secret_store_entry_name(slug, false)
+    );
     println!();
 
     let raw = if io::stdin().is_terminal() {
@@ -394,6 +410,24 @@ mod tests {
     #[test]
     fn slug_from_url_only_git_suffix() {
         assert_eq!(slug_from_url("https://github.com/.git"), None);
+    }
+
+    // -- secret_store_entry_name --
+
+    #[test]
+    fn secret_store_entry_name_dev_substitutes_slug() {
+        assert_eq!(
+            secret_store_entry_name("wordpress-ios", false),
+            "a8c-secrets dev private key for wordpress-ios"
+        );
+    }
+
+    #[test]
+    fn secret_store_entry_name_ci_substitutes_slug() {
+        assert_eq!(
+            secret_store_entry_name("pocket-casts-android", true),
+            "a8c-secrets CI private key for pocket-casts-android"
+        );
     }
 
     // -- validate_secret_basename --

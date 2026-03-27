@@ -85,6 +85,8 @@ In the repo (committed):              On the developer's machine (never in git):
 
 **Flat file structure.** No subdirectories inside `.a8c-secrets/`. Name collisions (e.g. two `google-services.json` for different modules) are handled with unique flat names like `wear-google-services.json`.
 
+**Secret file names.** Each secret is a single filename (e.g. `Secrets.swift`), not a relative path. The `edit`, `encrypt <file …>`, and `rm` commands reject names that contain path separators, `..`, or other non-flat syntax so outputs stay under `.a8c-secrets/` and `~/.a8c-secrets/<repo>/`.
+
 ## Key rotation
 
 On employee offboarding:

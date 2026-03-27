@@ -25,6 +25,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
     let repo_root = config::find_repo_root()?;
     let repo_config = config::load_repo_config(&repo_root)?;
     let slug = &repo_config.repo;
+    config::validate_secret_basename(&args.file)?;
     let public_keys = config::load_public_keys(&repo_root)?;
 
     let local_dir = config::decrypted_dir(slug)?;

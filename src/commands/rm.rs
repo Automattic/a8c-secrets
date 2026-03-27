@@ -15,6 +15,7 @@ pub fn run(args: &RmArgs) -> Result<()> {
     let repo_root = config::find_repo_root()?;
     let repo_config = config::load_repo_config(&repo_root)?;
     let slug = &repo_config.repo;
+    config::validate_secret_basename(&args.file)?;
 
     let local_path = config::decrypted_dir(slug)?.join(&args.file);
     let age_path = repo_root

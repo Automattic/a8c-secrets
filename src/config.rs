@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use age::secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use crate::permissions;
 
@@ -87,6 +87,44 @@ pub fn private_key_path(repo_slug: &str) -> Result<PathBuf> {
 /// Returns an error if the local secrets home directory cannot be determined.
 pub fn decrypted_dir(repo_slug: &str) -> Result<PathBuf> {
     Ok(secrets_home()?.join(repo_slug))
+}
+
+/// Ensure `name` is a single non-empty path segment (a flat secret basename).
+///
+/// Rejects empty strings, `.`, `..`, path separators, multiple components, and
+/// embedded NUL bytes. Backslashes are always rejected so rules match across
+/// platforms.
+///
+/// # Errors
+///
+/// Returns an error if `name` is not a valid secret file stem.
+pub fn validate_secret_basename(name: &str) -> Result<()> {
+    if name.is_empty() {
+        anyhow::bail!("Secret name cannot be empty");
+    }
+    if name.contains('\0') {
+        anyhow::bail!("Secret name cannot contain NUL bytes");
+    }
+    if name.contains('\\') {
+        anyhow::bail!("Secret name must not contain path separators");
+    }
+    let path = Path::new(name);
+    let mut components = path.components();
+    let first = components
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("Secret name cannot be empty"))?;
+    if components.next().is_some() {
+        anyhow::bail!("Secret name must be a single file name (no paths or `..`)");
+    }
+    match first {
+        Component::Normal(os) => {
+            if os.to_str().is_none() {
+                anyhow::bail!("Secret name must be valid Unicode");
+            }
+            Ok(())
+        }
+        _ => anyhow::bail!("Secret name must be a single file name (no paths or `..`)"),
+    }
 }
 
 /// Read the private key, checking `A8C_SECRETS_IDENTITY` env var first,
@@ -265,7 +303,7 @@ pub fn atomic_write(path: &Path, content: &[u8]) -> Result<()> {
 /// This is the pure logic extracted for testability; `slug_from_git_remote`
 /// handles the git subprocess call.
 pub fn slug_from_url(url: &str) -> Option<String> {
-    let last_component = url.rsplit(|c| c == '/' || c == ':').next()?;
+    let last_component = url.rsplit(|c| ['/', ':'].contains(&c)).next()?;
     let name = last_component
         .strip_suffix(".git")
         .unwrap_or(last_component);
@@ -351,6 +389,38 @@ mod tests {
     #[test]
     fn slug_from_url_only_git_suffix() {
         assert_eq!(slug_from_url("https://github.com/.git"), None);
+    }
+
+    // -- validate_secret_basename --
+
+    #[test]
+    fn validate_secret_basename_accepts_flat_names() {
+        validate_secret_basename("Secrets.swift").unwrap();
+        validate_secret_basename("wear-google-services.json").unwrap();
+        validate_secret_basename("config.json").unwrap();
+    }
+
+    #[test]
+    fn validate_secret_basename_rejects_empty() {
+        assert!(validate_secret_basename("").is_err());
+    }
+
+    #[test]
+    fn validate_secret_basename_rejects_dot_entries() {
+        assert!(validate_secret_basename(".").is_err());
+        assert!(validate_secret_basename("..").is_err());
+    }
+
+    #[test]
+    fn validate_secret_basename_rejects_path_separators() {
+        assert!(validate_secret_basename("foo/bar").is_err());
+        assert!(validate_secret_basename("../secret").is_err());
+        assert!(validate_secret_basename("a\\b").is_err());
+    }
+
+    #[test]
+    fn validate_secret_basename_rejects_nul() {
+        assert!(validate_secret_basename("a\0b").is_err());
     }
 
     // -- load_repo_config --

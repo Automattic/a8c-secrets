@@ -62,6 +62,10 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
         return Ok(());
     }
 
+    for name in &files_to_consider {
+        config::validate_secret_basename(name)?;
+    }
+
     // For smart comparison, we need the private key to decrypt existing .age files.
     // If --force, we skip comparison entirely and don't need the private key.
     let private_key = if args.force {

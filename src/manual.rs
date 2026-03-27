@@ -37,6 +37,12 @@ FILE LAYOUT
             ├── google-services.json
             └── api-keys.yml
 
+SECRET FILE NAMES
+    Use one path segment per secret (e.g. Secrets.swift), not a relative path.
+    Commands that take a secret name (edit, encrypt with explicit files, rm)
+    reject paths, .., and directory separators so files stay under the
+    intended directories.
+
 GETTING STARTED
     1. First-time repo setup (run once by a maintainer):
 

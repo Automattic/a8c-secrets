@@ -11,6 +11,7 @@ echo "~~~ Uploading artifact..."
 platform_triple=$(rustc -vV | grep "^host" | awk '{print $2}')
 version="${BUILDKITE_TAG:-${BUILDKITE_COMMIT:0:7}}"
 extension="${1:-}"
+source_binary="target/release/a8c-secrets${extension}"
 dest_filename="a8c-secrets-${platform_triple}-${version}${extension}"
-cp "target/release/a8c-secrets" "$dest_filename"
+cp "$source_binary" "$dest_filename"
 buildkite-agent artifact upload "$dest_filename"

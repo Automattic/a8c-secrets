@@ -15,6 +15,7 @@ rpassword = "7.4.0"
 serde = { version = "1", features = ["derive"] }
 tempfile = "3"
 toml = "0.8"
+zeroize = "1.7"
 
 [target.'cfg(windows)'.dependencies]
 windows-permissions = "0.2.4"

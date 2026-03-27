@@ -1,5 +1,6 @@
 use age::secrecy::{ExposeSecret, SecretString};
 use anyhow::Result;
+use zeroize::Zeroizing;
 
 /// Abstraction over age encryption operations.
 ///
@@ -10,7 +11,13 @@ pub trait CryptoEngine {
     fn encrypt(&self, plaintext: &[u8], recipients: &[String]) -> Result<Vec<u8>>;
 
     /// Decrypt ciphertext using the given identity (private key).
-    fn decrypt(&self, ciphertext: &[u8], identity: &SecretString) -> Result<Vec<u8>>;
+    ///
+    /// Plaintext is returned in a [`Zeroizing`] buffer so it is cleared on drop.
+    fn decrypt(
+        &self,
+        ciphertext: &[u8],
+        identity: &SecretString,
+    ) -> Result<Zeroizing<Vec<u8>>>;
 
     /// Generate a new key pair. Returns (`private_key`, `public_key`).
     fn keygen(&self) -> Result<(SecretString, String)>;
@@ -49,7 +56,11 @@ impl CryptoEngine for AgeCrateEngine {
         Ok(encrypted)
     }
 
-    fn decrypt(&self, ciphertext: &[u8], identity: &SecretString) -> Result<Vec<u8>> {
+    fn decrypt(
+        &self,
+        ciphertext: &[u8],
+        identity: &SecretString,
+    ) -> Result<Zeroizing<Vec<u8>>> {
         use std::io::Read;
 
         let identity: age::x25519::Identity = identity
@@ -66,7 +77,7 @@ impl CryptoEngine for AgeCrateEngine {
             .map_err(|e| anyhow::anyhow!("Decryption failed: {e}"))?;
         reader.read_to_end(&mut decrypted)?;
 
-        Ok(decrypted)
+        Ok(Zeroizing::new(decrypted))
     }
 
     fn keygen(&self) -> Result<(SecretString, String)> {
@@ -120,7 +131,7 @@ mod tests {
         assert_ne!(ciphertext, plaintext, "ciphertext should differ from plaintext");
 
         let decrypted = engine.decrypt(&ciphertext, &private).unwrap();
-        assert_eq!(decrypted, plaintext);
+        assert_eq!(decrypted.as_slice(), plaintext);
     }
 
     #[test]
@@ -133,8 +144,8 @@ mod tests {
         let ciphertext = engine.encrypt(plaintext, &[pub1, pub2]).unwrap();
 
         // Both recipients can decrypt
-        assert_eq!(engine.decrypt(&ciphertext, &priv1).unwrap(), plaintext);
-        assert_eq!(engine.decrypt(&ciphertext, &priv2).unwrap(), plaintext);
+        assert_eq!(engine.decrypt(&ciphertext, &priv1).unwrap().as_slice(), plaintext);
+        assert_eq!(engine.decrypt(&ciphertext, &priv2).unwrap().as_slice(), plaintext);
     }
 
     #[test]

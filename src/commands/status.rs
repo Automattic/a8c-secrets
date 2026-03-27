@@ -4,6 +4,7 @@ use anyhow::Result;
 
 use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::{derive_public_key, CryptoEngine};
+use zeroize::Zeroizing;
 
 fn collect_all_files(age_files: &BTreeSet<String>, local_files: &BTreeSet<String>) -> BTreeSet<String> {
     age_files.union(local_files).cloned().collect()
@@ -93,9 +94,11 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
                         let age_path = secrets_dir.join(format!("{name}.age"));
                         let local_path = local_dir.join(name);
                         let ciphertext = std::fs::read(&age_path)?;
-                        let local_content = std::fs::read(&local_path)?;
+                        let local_content = Zeroizing::new(std::fs::read(&local_path)?);
                         match crypto_engine.decrypt(&ciphertext, key) {
-                            Ok(decrypted) if decrypted == local_content => "\u{2713} in sync",
+                            Ok(decrypted) if decrypted.as_slice() == local_content.as_slice() => {
+                                "\u{2713} in sync"
+                            }
                             Ok(_) => "\u{26a0} modified locally",
                             Err(_) => "\u{26a0} cannot decrypt to compare",
                         }

@@ -64,7 +64,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
 
         match crypto_engine.decrypt(&ciphertext, &private_key) {
             Ok(plaintext) => {
-                config::atomic_write(&out_path, &plaintext)?;
+                config::atomic_write(&out_path, plaintext.as_slice())?;
                 permissions::set_secure_file_permissions(&out_path)?;
                 println!("  {name} — decrypted");
                 decrypted_count += 1;

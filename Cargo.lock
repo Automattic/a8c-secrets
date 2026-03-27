@@ -17,6 +17,7 @@ dependencies = [
  "tempfile",
  "toml 0.8.23",
  "windows-permissions",
+ "zeroize",
 ]
 
 [[package]]

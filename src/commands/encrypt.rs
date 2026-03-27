@@ -3,6 +3,7 @@ use anyhow::{Context, Result};
 use crate::cli::EncryptArgs;
 use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::CryptoEngine;
+use zeroize::Zeroizing;
 
 fn should_attempt_smart_compare(force: bool, has_private_key: bool, age_exists: bool) -> bool {
     !force && has_private_key && age_exists
@@ -89,8 +90,10 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
         let local_path = local_dir.join(name);
         let age_path = secrets_dir.join(format!("{name}.age"));
 
-        let local_content = std::fs::read(&local_path)
-            .with_context(|| format!("Failed to read {}", local_path.display()))?;
+        let local_content = Zeroizing::new(
+            std::fs::read(&local_path)
+                .with_context(|| format!("Failed to read {}", local_path.display()))?,
+        );
 
         // Smart comparison: if .age exists and we have a private key, decrypt and compare
         if should_attempt_smart_compare(args.force, private_key.is_some(), age_path.exists())
@@ -98,7 +101,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
         {
             let ciphertext = std::fs::read(&age_path)?;
             match crypto_engine.decrypt(&ciphertext, key) {
-                Ok(decrypted) if decrypted == local_content => {
+                Ok(decrypted) if decrypted.as_slice() == local_content.as_slice() => {
                     println!("  {name} — unchanged, skipping");
                     skipped_count += 1;
                     continue;
@@ -114,7 +117,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
 
         // Encrypt
         let existed = age_path.exists();
-        let ciphertext = crypto_engine.encrypt(&local_content, &public_keys)?;
+        let ciphertext = crypto_engine.encrypt(local_content.as_slice(), &public_keys)?;
         config::atomic_write(&age_path, &ciphertext)?;
         if existed && !args.force {
             println!("  {name} — modified, encrypting");

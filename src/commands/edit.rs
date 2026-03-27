@@ -6,6 +6,7 @@ use crate::cli::EditArgs;
 use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::CryptoEngine;
 use crate::permissions;
+use zeroize::Zeroizing;
 
 fn default_editor() -> String {
     if cfg!(windows) {
@@ -47,8 +48,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
         std::fs::write(&local_path, "")?;
     }
 
-    // Hash before editing
-    let before = std::fs::read(&local_path)?;
+    let before = Zeroizing::new(std::fs::read(&local_path)?);
 
     // Open in $EDITOR
     let editor = std::env::var("EDITOR").unwrap_or_else(|_| default_editor());
@@ -62,15 +62,15 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
     }
 
     // Hash after editing
-    let after = std::fs::read(&local_path)?;
+    let after = Zeroizing::new(std::fs::read(&local_path)?);
 
-    if before == after {
+    if before.as_slice() == after.as_slice() {
         println!("No changes detected.");
         return Ok(());
     }
 
     // Encrypt the changed file
-    let ciphertext = crypto_engine.encrypt(&after, &public_keys)?;
+    let ciphertext = crypto_engine.encrypt(after.as_slice(), &public_keys)?;
     let age_path = repo_root
         .join(REPO_SECRETS_DIR)
         .join(format!("{}.age", args.file));

@@ -77,7 +77,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &RotateArgs) -> Result<()> {
         let plaintext = crypto_engine
             .decrypt(&ciphertext, decrypt_key)
             .with_context(|| format!("Failed to decrypt {name} during re-encryption"))?;
-        let new_ciphertext = crypto_engine.encrypt(&plaintext, &updated_keys)?;
+        let new_ciphertext = crypto_engine.encrypt(plaintext.as_slice(), &updated_keys)?;
         config::atomic_write(&age_path, &new_ciphertext)?;
         println!("  {name} — re-encrypted");
     }

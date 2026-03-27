@@ -155,6 +155,58 @@ fn decrypt_non_interactive_writes_plaintext_to_local_home_dir() {
 }
 
 #[test]
+fn decrypt_non_interactive_fails_when_one_age_file_cannot_be_decrypted() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_dir = temp.path().join("repo");
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&repo_dir).unwrap();
+    fs::create_dir_all(&home_dir).unwrap();
+
+    let slug = "demo-repo";
+    write_repo_config(&repo_dir, slug);
+
+    let dev_identity = age::x25519::Identity::generate();
+    let ci_identity = age::x25519::Identity::generate();
+    let dev_private = dev_identity.to_string().expose_secret().to_string();
+    let dev_public = dev_identity.to_public().to_string();
+    let ci_public = ci_identity.to_public().to_string();
+    write_keys_pub(&repo_dir, &dev_public, &ci_public);
+
+    let plaintext = br#"{"token":"abc123"}"#;
+    let ciphertext = encrypt_for(&[dev_public.clone(), ci_public], plaintext);
+    fs::write(repo_dir.join(".a8c-secrets/secret.json.age"), ciphertext).unwrap();
+    fs::write(
+        repo_dir.join(".a8c-secrets/corrupt.age"),
+        b"not valid age ciphertext",
+    )
+    .unwrap();
+
+    let assert = configured_command(&repo_dir, &home_dir)
+        .arg("decrypt")
+        .arg("--non-interactive")
+        .env("A8C_SECRETS_IDENTITY", &dev_private)
+        .assert()
+        .failure();
+
+    let combined = String::from_utf8_lossy(&assert.get_output().stderr)
+        .to_string()
+        + &String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        combined.contains("corrupt") && combined.contains("FAILED"),
+        "expected per-file failure in output: {combined}"
+    );
+    assert!(
+        combined.contains("1 of 2") && combined.contains("failed to decrypt"),
+        "expected aggregate error: {combined}"
+    );
+
+    assert_eq!(
+        fs::read(home_dir.join(".a8c-secrets").join(slug).join("secret.json")).unwrap(),
+        plaintext
+    );
+}
+
+#[test]
 fn encrypt_skips_rewrite_when_plaintext_is_unchanged() {
     let temp = tempfile::tempdir().unwrap();
     let repo_dir = temp.path().join("repo");

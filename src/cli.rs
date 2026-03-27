@@ -38,6 +38,9 @@ On first run, if no private key is found, interactively prompts you to paste
 the dev private key from the Secret Store. In CI (non-TTY or --non-interactive),
 errors instead of prompting.
 
+If any file cannot be decrypted (wrong key, corrupt ciphertext), the command exits
+with a non-zero status after attempting every file.
+
 Orphan detection: if local decrypted files exist with no corresponding .age file
 in the repo, lists them and prompts for removal.",
         after_long_help = "\

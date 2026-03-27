@@ -20,8 +20,8 @@ fn compute_orphans(local_files: &[String], age_files: &[String]) -> Vec<String> 
 /// # Errors
 ///
 /// Returns an error if repo/config discovery fails, key resolution/import fails,
-/// encrypted files cannot be read/decrypted, output files cannot be written, or
-/// orphan cleanup fails.
+/// encrypted files cannot be read, any ciphertext cannot be decrypted, output files
+/// cannot be written, or orphan cleanup fails.
 pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
     let interactive = !args.non_interactive && io::stdin().is_terminal();
 
@@ -52,7 +52,8 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
     permissions::set_secure_dir_permissions(&out_dir)?;
 
     let secrets_dir = repo_root.join(REPO_SECRETS_DIR);
-    let mut decrypted_count = 0;
+    let mut decrypted_count = 0usize;
+    let mut decrypt_failures = 0usize;
 
     for name in &age_files {
         let age_path = secrets_dir.join(format!("{name}.age"));
@@ -70,6 +71,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
             }
             Err(e) => {
                 eprintln!("  {name} — FAILED: {e}");
+                decrypt_failures += 1;
             }
         }
     }
@@ -83,6 +85,13 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
 
     // Orphan detection: local files with no corresponding .age
     handle_orphans(slug, &age_files, interactive)?;
+
+    if decrypt_failures > 0 {
+        anyhow::bail!(
+            "{decrypt_failures} of {} encrypted file(s) failed to decrypt",
+            age_files.len()
+        );
+    }
 
     Ok(())
 }

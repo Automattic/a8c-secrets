@@ -330,10 +330,7 @@ pub fn list_age_files(repo_root: &Path) -> Result<Vec<String>> {
         };
         if let Some(stem) = name.strip_suffix(".age") {
             validate_secret_basename(stem).with_context(|| {
-                format!(
-                    "Invalid secret name in {}/{} (stem must be a flat basename)",
-                    REPO_SECRETS_DIR, name
-                )
+                format!("Invalid secret name in {REPO_SECRETS_DIR}/{name} (stem must be a flat basename)")
             })?;
             names.push(stem.to_string());
         }

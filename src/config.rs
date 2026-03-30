@@ -109,10 +109,17 @@ pub fn load_repo_config(repo_root: &Path) -> Result<RepoConfig> {
 
 /// Path to the local secrets home directory.
 ///
+/// Checks `A8C_SECRETS_HOME` first, falling back to `~/.a8c-secrets`.
+/// The env var exists primarily for testing; it is not documented for
+/// end-user use.
+///
 /// # Errors
 ///
 /// Returns an error if the user's home directory cannot be determined.
 pub fn secrets_home() -> Result<PathBuf> {
+    if let Ok(override_path) = std::env::var("A8C_SECRETS_HOME") {
+        return Ok(PathBuf::from(override_path));
+    }
     let home = dirs::home_dir().context("Could not determine home directory")?;
     Ok(home.join(HOME_SECRETS_DIR))
 }

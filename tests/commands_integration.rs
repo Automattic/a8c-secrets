@@ -47,16 +47,19 @@ fn decrypt_with_private(ciphertext: &[u8], private_key: &str) -> anyhow::Result<
     Ok(out)
 }
 
+fn secrets_home(home_dir: &Path) -> PathBuf {
+    home_dir.join(".a8c-secrets")
+}
+
 fn configured_command(repo_dir: &Path, home_dir: &Path) -> Command {
     let mut cmd = Command::cargo_bin("a8c-secrets").unwrap();
     cmd.current_dir(repo_dir)
-        .env("HOME", home_dir)
-        .env("USERPROFILE", home_dir);
+        .env("A8C_SECRETS_HOME", secrets_home(home_dir));
     cmd
 }
 
 fn local_key_path(home_dir: &Path, slug: &str) -> PathBuf {
-    home_dir.join(".a8c-secrets/keys").join(format!("{slug}.key"))
+    secrets_home(home_dir).join("keys").join(format!("{slug}.key"))
 }
 
 fn cargo_bin_exe() -> PathBuf {
@@ -152,7 +155,7 @@ fn decrypt_non_interactive_writes_plaintext_to_local_home_dir() {
         .assert()
         .success();
 
-    let out = home_dir.join(".a8c-secrets").join(slug).join("secret.json");
+    let out = secrets_home(&home_dir).join(slug).join("secret.json");
     assert_eq!(fs::read(out).unwrap(), plaintext);
 }
 
@@ -203,7 +206,7 @@ fn decrypt_non_interactive_fails_when_one_age_file_cannot_be_decrypted() {
     );
 
     assert_eq!(
-        fs::read(home_dir.join(".a8c-secrets").join(slug).join("secret.json")).unwrap(),
+        fs::read(secrets_home(&home_dir).join(slug).join("secret.json")).unwrap(),
         plaintext
     );
 }
@@ -231,7 +234,7 @@ fn encrypt_skips_rewrite_when_plaintext_is_unchanged() {
     let age_path = repo_dir.join(".a8c-secrets/config.json.age");
     fs::write(&age_path, &ciphertext).unwrap();
 
-    let local_dir = home_dir.join(".a8c-secrets").join(slug);
+    let local_dir = secrets_home(&home_dir).join(slug);
     fs::create_dir_all(&local_dir).unwrap();
     fs::write(local_dir.join("config.json"), plaintext).unwrap();
 
@@ -331,7 +334,7 @@ fn encrypt_rejects_traversal_in_explicit_filename() {
     let ci_public = ci_identity.to_public().to_string();
     write_keys_pub(&repo_dir, &dev_public, &ci_public);
 
-    let local_dir = home_dir.join(".a8c-secrets").join(slug);
+    let local_dir = secrets_home(&home_dir).join(slug);
     fs::create_dir_all(&local_dir).unwrap();
     fs::write(local_dir.join("x.txt"), b"x").unwrap();
 
@@ -490,7 +493,7 @@ fn encrypt_new_plaintext_then_decrypt_roundtrip() {
     fs::write(&key_path, format!("{dev_private}\n")).unwrap();
 
     let plaintext = b"roundtrip-plaintext";
-    let local_dir = home_dir.join(".a8c-secrets").join(slug);
+    let local_dir = secrets_home(&home_dir).join(slug);
     fs::create_dir_all(&local_dir).unwrap();
     fs::write(local_dir.join("note.txt"), plaintext).unwrap();
 
@@ -525,8 +528,7 @@ fn setup_init_with_git_remote_then_encrypt_decrypt_roundtrip() {
 
     let mut child = std::process::Command::new(cargo_bin_exe())
         .current_dir(&repo_dir)
-        .env("HOME", &home_dir)
-        .env("USERPROFILE", &home_dir)
+        .env("A8C_SECRETS_HOME", secrets_home(&home_dir))
         .args(["setup", "init"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -545,7 +547,7 @@ fn setup_init_with_git_remote_then_encrypt_decrypt_roundtrip() {
     assert!(repo_dir.join(".a8c-secrets/config.toml").exists());
 
     let plaintext = b"e2e-from-init";
-    let local_dir = home_dir.join(".a8c-secrets").join(slug);
+    let local_dir = secrets_home(&home_dir).join(slug);
     fs::create_dir_all(&local_dir).unwrap();
     fs::write(local_dir.join("note.txt"), plaintext).unwrap();
 
@@ -666,14 +668,13 @@ fn setup_nuke_removes_repo_secrets_home_key_and_decrypted_dir() {
     fs::create_dir_all(key_path.parent().unwrap()).unwrap();
     fs::write(&key_path, b"AGE-SECRET-KEY-1PLACEHOLDER\n").unwrap();
 
-    let decrypted = home_dir.join(".a8c-secrets").join(slug);
+    let decrypted = secrets_home(&home_dir).join(slug);
     fs::create_dir_all(&decrypted).unwrap();
     fs::write(decrypted.join("local.txt"), b"plain").unwrap();
 
     let mut child = std::process::Command::new(cargo_bin_exe())
         .current_dir(&repo_dir)
-        .env("HOME", &home_dir)
-        .env("USERPROFILE", &home_dir)
+        .env("A8C_SECRETS_HOME", secrets_home(&home_dir))
         .args(["setup", "nuke"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -723,8 +724,7 @@ fn keys_import_writes_private_key_from_stdin() {
 
     let mut child = std::process::Command::new(cargo_bin_exe())
         .current_dir(&repo_dir)
-        .env("HOME", &home_dir)
-        .env("USERPROFILE", &home_dir)
+        .env("A8C_SECRETS_HOME", secrets_home(&home_dir))
         .args(["keys", "import"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

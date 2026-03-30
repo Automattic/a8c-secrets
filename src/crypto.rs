@@ -156,17 +156,12 @@ mod tests {
     fn decrypt_with_wrong_key_fails() {
         let engine = crypto_engine();
         let (_, pub1) = engine.keygen().unwrap();
-        let (_, pub_wrong) = engine.keygen().unwrap();
 
-        // Encrypt for pub1, but derive a fresh wrong private key
         let ciphertext = engine.encrypt(b"secret", &[pub1]).unwrap();
 
-        // Generate a different key pair and try to decrypt
-        let wrong_private = engine.keygen().unwrap().0;
+        let (wrong_private, _) = engine.keygen().unwrap();
         let result = engine.decrypt(&ciphertext, &wrong_private);
         assert!(result.is_err());
-        // Suppress unused variable warning
-        let _ = pub_wrong;
     }
 
     #[test]

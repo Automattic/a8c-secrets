@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
 description = "CLI tool for managing encrypted secrets in Automattic mobile repositories"
+repository = "https://github.com/Automattic/a8c-secrets"
+license = "GPL-2.0-or-later"
 
 [dependencies]
 age = { version = "0.11", features = ["armor"] }

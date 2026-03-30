@@ -1,4 +1,5 @@
 //! `a8c-secrets` CLI entrypoint and command dispatch.
+#![warn(missing_docs)]
 
 mod cli;
 mod commands;

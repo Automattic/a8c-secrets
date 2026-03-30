@@ -1,5 +1,5 @@
-use anyhow::{Context, Result};
 use age::secrecy::{ExposeSecret, SecretString};
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::{Component, Path, PathBuf};
@@ -75,15 +75,13 @@ pub fn find_repo_root() -> Result<PathBuf> {
         if repo_config_path(dir).exists() {
             return Ok(dir.to_path_buf());
         }
-        dir = dir
-            .parent()
-            .with_context(|| {
-                format!(
-                    "No {}/config.toml found in any parent of {}",
-                    REPO_SECRETS_DIR,
-                    cwd.display()
-                )
-            })?;
+        dir = dir.parent().with_context(|| {
+            format!(
+                "No {}/config.toml found in any parent of {}",
+                REPO_SECRETS_DIR,
+                cwd.display()
+            )
+        })?;
     }
 }
 
@@ -100,8 +98,8 @@ pub fn load_repo_config(repo_root: &Path) -> Result<RepoConfig> {
     let path = repo_config_path(repo_root);
     let content = std::fs::read_to_string(&path)
         .with_context(|| format!("Failed to read {}", path.display()))?;
-    let config: RepoConfig = toml::from_str(&content)
-        .with_context(|| format!("Failed to parse {}", path.display()))?;
+    let config: RepoConfig =
+        toml::from_str(&content).with_context(|| format!("Failed to parse {}", path.display()))?;
     validate_repo_slug(&config.repo)
         .with_context(|| format!("Invalid repo slug in {}", path.display()))?;
     Ok(config)
@@ -109,10 +107,17 @@ pub fn load_repo_config(repo_root: &Path) -> Result<RepoConfig> {
 
 /// Path to the local secrets home directory.
 ///
+/// Checks `A8C_SECRETS_HOME` first, falling back to `~/.a8c-secrets`.
+/// The env var exists primarily for testing; it is not documented for
+/// end-user use.
+///
 /// # Errors
 ///
 /// Returns an error if the user's home directory cannot be determined.
 pub fn secrets_home() -> Result<PathBuf> {
+    if let Ok(override_path) = std::env::var("A8C_SECRETS_HOME") {
+        return Ok(PathBuf::from(override_path));
+    }
     let home = dirs::home_dir().context("Could not determine home directory")?;
     Ok(home.join(HOME_SECRETS_DIR))
 }
@@ -123,7 +128,9 @@ pub fn secrets_home() -> Result<PathBuf> {
 ///
 /// Returns an error if the local secrets home directory cannot be determined.
 pub fn private_key_path(repo_slug: &str) -> Result<PathBuf> {
-    Ok(secrets_home()?.join("keys").join(format!("{repo_slug}.key")))
+    Ok(secrets_home()?
+        .join("keys")
+        .join(format!("{repo_slug}.key")))
 }
 
 /// Path to the decrypted secrets directory for a given repo slug.
@@ -218,6 +225,16 @@ pub fn get_private_key(repo_slug: &str) -> Result<SecretString> {
 
 /// Validate and securely save a private key for the given repo.
 ///
+/// The parent directory ACL is applied immediately after ensuring the directory
+/// tree exists, including when the directory already existed (e.g. created
+/// manually with wrong permissions). The key is written via [`atomic_write`].
+///
+/// On Windows, replacing an existing key file in place can fail with
+/// `ERROR_ACCESS_DENIED` once the parent uses a protected owner-only DACL
+/// (`tempfile`'s persist step does not replace an existing destination). If an
+/// old key file is present, it is removed first on Windows only; on Unix,
+/// `atomic_write` replaces the destination atomically without that extra step.
+///
 /// # Errors
 ///
 /// Returns an error if the key format is invalid, key directories cannot be
@@ -229,12 +246,36 @@ pub fn save_private_key(repo_slug: &str, private_key: &SecretString) -> Result<P
 
     let key_path = private_key_path(repo_slug)?;
     if let Some(parent) = key_path.parent() {
-        std::fs::create_dir_all(parent)?;
-        permissions::set_secure_dir_permissions(parent)?;
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create key directory {}", parent.display()))?;
+        permissions::set_secure_dir_permissions(parent).with_context(|| {
+            format!(
+                "Failed to set permissions on key directory {}",
+                parent.display()
+            )
+        })?;
     }
 
-    std::fs::write(&key_path, format!("{}\n", private_key.expose_secret()))?;
-    permissions::set_secure_file_permissions(&key_path)?;
+    #[cfg(windows)]
+    if key_path.exists() {
+        std::fs::remove_file(&key_path).with_context(|| {
+            format!(
+                "Failed to remove existing private key at {}",
+                key_path.display()
+            )
+        })?;
+    }
+
+    let line = format!("{}\n", private_key.expose_secret());
+    atomic_write(&key_path, line.as_bytes())
+        .with_context(|| format!("Failed to write private key to {}", key_path.display()))?;
+
+    permissions::set_secure_file_permissions(&key_path).with_context(|| {
+        format!(
+            "Failed to set permissions on private key file {}",
+            key_path.display()
+        )
+    })?;
 
     Ok(key_path)
 }
@@ -322,7 +363,9 @@ pub fn list_age_files(repo_root: &Path) -> Result<Vec<String>> {
     if !dir.exists() {
         return Ok(names);
     }
-    for entry in std::fs::read_dir(&dir).with_context(|| format!("Failed to read {}", dir.display()))? {
+    for entry in
+        std::fs::read_dir(&dir).with_context(|| format!("Failed to read {}", dir.display()))?
+    {
         let entry = entry?;
         let Some(name) = entry.file_name().to_str().map(String::from) else {
             eprintln!("Warning: skipping non-UTF-8 filename in {}", dir.display());
@@ -354,7 +397,9 @@ pub fn list_local_files(repo_slug: &str) -> Result<Vec<String>> {
     if !dir.exists() {
         return Ok(names);
     }
-    for entry in std::fs::read_dir(&dir).with_context(|| format!("Failed to read {}", dir.display()))? {
+    for entry in
+        std::fs::read_dir(&dir).with_context(|| format!("Failed to read {}", dir.display()))?
+    {
         let entry = entry?;
         if entry.file_type()?.is_file() {
             let Some(name) = entry.file_name().to_str().map(String::from) else {
@@ -362,10 +407,7 @@ pub fn list_local_files(repo_slug: &str) -> Result<Vec<String>> {
                 continue;
             };
             validate_secret_basename(&name).with_context(|| {
-                format!(
-                    "Invalid secret file name in {}: {name}",
-                    dir.display()
-                )
+                format!("Invalid secret file name in {}: {name}", dir.display())
             })?;
             names.push(name);
         }
@@ -560,11 +602,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let secrets = dir.path().join(REPO_SECRETS_DIR);
         fs::create_dir_all(&secrets).unwrap();
-        fs::write(
-            secrets.join("config.toml"),
-            "repo = \"test-repo\"\n",
-        )
-        .unwrap();
+        fs::write(secrets.join("config.toml"), "repo = \"test-repo\"\n").unwrap();
 
         let config = load_repo_config(dir.path()).unwrap();
         assert_eq!(config.repo, "test-repo");
@@ -582,11 +620,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let secrets = dir.path().join(REPO_SECRETS_DIR);
         fs::create_dir_all(&secrets).unwrap();
-        fs::write(
-            secrets.join("config.toml"),
-            "repo = \"../evil\"\n",
-        )
-        .unwrap();
+        fs::write(secrets.join("config.toml"), "repo = \"../evil\"\n").unwrap();
 
         let result = load_repo_config(dir.path());
         let err = result.err().expect("expected invalid slug to be rejected");
@@ -707,9 +741,7 @@ mod tests {
         let key = SecretString::new("not-a-valid-key".to_string().into());
         let result = save_private_key("test-repo", &key);
         assert!(result.is_err());
-        assert!(
-            format!("{}", result.unwrap_err()).contains("Invalid private key format"),
-        );
+        assert!(format!("{}", result.unwrap_err()).contains("Invalid private key format"),);
     }
 
     #[test]
@@ -737,5 +769,20 @@ mod tests {
 
         // Clean up
         let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn save_private_key_overwrites_existing() {
+        let slug = &format!("save-overwrite-{}", std::process::id());
+        let key1 = SecretString::new("AGE-SECRET-KEY-FIRSTAAA".to_string().into());
+        let key2 = SecretString::new("AGE-SECRET-KEY-SECONDBBB".to_string().into());
+        let path1 = save_private_key(slug, &key1).unwrap();
+        let path2 = save_private_key(slug, &key2).unwrap();
+        assert_eq!(path1, path2);
+        assert_eq!(
+            fs::read_to_string(&path2).unwrap().trim(),
+            "AGE-SECRET-KEY-SECONDBBB"
+        );
+        let _ = fs::remove_file(&path2);
     }
 }

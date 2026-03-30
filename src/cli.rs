@@ -109,8 +109,7 @@ EXAMPLES:
     Rm(RmArgs),
 
     /// Show sync status of all secret files
-    #[command(
-        long_about = "\
+    #[command(long_about = "\
 Show the sync status of all secret files.
 
 Displays the repo slug, how many public keys were read from keys.pub (2 expected),
@@ -118,8 +117,7 @@ private key status, and each file's sync state:
   \u{2713}  in sync         — local plaintext matches encrypted .age content
   \u{26a0}  modified locally — plaintext differs from .age (needs encrypt)
   \u{2739}  local only       — no .age file in repo (new, needs encrypt)
-  \u{25c7}  encrypted only   — no local plaintext (needs decrypt)"
-    )]
+  \u{25c7}  encrypted only   — no local plaintext (needs decrypt)")]
     Status,
 
     /// Key management (show, import, rotate)
@@ -176,25 +174,21 @@ pub struct KeysSub {
 #[derive(Debug, Subcommand)]
 pub enum KeysCommand {
     /// Display private key path and public keys with dev/ci identification
-    #[command(
-        long_about = "\
+    #[command(long_about = "\
 Display key information for the current repository.
 
 Shows the private key file path, derives the corresponding public key,
 and lists all public keys from .a8c-secrets/keys.pub. Identifies which
-key is dev (matches your local private key) and which is CI."
-    )]
+key is dev (matches your local private key) and which is CI.")]
     Show,
 
     /// Import a private key from the Secret Store
-    #[command(
-        long_about = "\
+    #[command(long_about = "\
 Import a dev private key from the Automattic Secret Store.
 
 Prompts you to paste the private key string (AGE-SECRET-KEY-...) and saves
 it to ~/.a8c-secrets/keys/<repo>.key with mode 0600. Overwrites any existing
-key for this repo."
-    )]
+key for this repo.")]
     Import,
 
     /// Generate a new key pair and re-encrypt all files
@@ -242,35 +236,29 @@ pub struct SetupSub {
 #[derive(Debug, Subcommand)]
 pub enum SetupCommand {
     /// Initialize a8c-secrets in the current repository
-    #[command(
-        long_about = "\
+    #[command(long_about = "\
 Initialize a8c-secrets in the current git repository.
 
 Creates .a8c-secrets/config.toml and keys.pub, generates both dev and CI
 key pairs, and saves the dev private key locally. Derives the repo slug
-from the git remote URL (or prompts if unavailable)."
-    )]
+from the git remote URL (or prompts if unavailable).")]
     Init,
 
     /// Remove all a8c-secrets data (repo config, local keys, decrypted files)
-    #[command(
-        long_about = "\
+    #[command(long_about = "\
 Completely remove a8c-secrets from the repository and local machine.
 
 Deletes .a8c-secrets/ from the repo, the private key at
 ~/.a8c-secrets/keys/<repo>.key, and all decrypted files at
-~/.a8c-secrets/<repo>/. Requires typing the repo slug to confirm."
-    )]
+~/.a8c-secrets/<repo>/. Requires typing the repo slug to confirm.")]
     Nuke,
 
     /// Output shell completion script
-    #[command(
-        after_long_help = "\
+    #[command(after_long_help = "\
 EXAMPLES:
   a8c-secrets setup completions bash >> ~/.bashrc
   a8c-secrets setup completions zsh > ~/.zfunc/_a8c-secrets
-  a8c-secrets setup completions fish > ~/.config/fish/completions/a8c-secrets.fish"
-    )]
+  a8c-secrets setup completions fish > ~/.config/fish/completions/a8c-secrets.fish")]
     Completions(CompletionsArgs),
 }
 
@@ -373,7 +361,10 @@ mod tests {
     #[test]
     fn parse_no_subcommand_errors() {
         let err = parse(&[]).unwrap_err();
-        assert_eq!(err.kind(), ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand);
+        assert_eq!(
+            err.kind(),
+            ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+        );
     }
 
     #[test]
@@ -382,4 +373,3 @@ mod tests {
         assert!(matches!(cli.command, Command::Manual));
     }
 }
-

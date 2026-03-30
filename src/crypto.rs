@@ -13,11 +13,7 @@ pub trait CryptoEngine {
     /// Decrypt ciphertext using the given identity (private key).
     ///
     /// Plaintext is returned in a [`Zeroizing`] buffer so it is cleared on drop.
-    fn decrypt(
-        &self,
-        ciphertext: &[u8],
-        identity: &SecretString,
-    ) -> Result<Zeroizing<Vec<u8>>>;
+    fn decrypt(&self, ciphertext: &[u8], identity: &SecretString) -> Result<Zeroizing<Vec<u8>>>;
 
     /// Generate a new key pair. Returns (`private_key`, `public_key`).
     fn keygen(&self) -> Result<(SecretString, String)>;
@@ -47,10 +43,9 @@ impl CryptoEngine for AgeCrateEngine {
             .collect::<Result<_, _>>()
             .map_err(|e| anyhow::anyhow!("Invalid recipient public key: {e}"))?;
 
-        let encryptor = age::Encryptor::with_recipients(
-            recipients.iter().map(|r| r as &dyn age::Recipient),
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to initialize age encryptor: {e}"))?;
+        let encryptor =
+            age::Encryptor::with_recipients(recipients.iter().map(|r| r as &dyn age::Recipient))
+                .map_err(|e| anyhow::anyhow!("Failed to initialize age encryptor: {e}"))?;
 
         let mut encrypted = vec![];
         let mut writer = encryptor.wrap_output(&mut encrypted)?;
@@ -60,11 +55,7 @@ impl CryptoEngine for AgeCrateEngine {
         Ok(encrypted)
     }
 
-    fn decrypt(
-        &self,
-        ciphertext: &[u8],
-        identity: &SecretString,
-    ) -> Result<Zeroizing<Vec<u8>>> {
+    fn decrypt(&self, ciphertext: &[u8], identity: &SecretString) -> Result<Zeroizing<Vec<u8>>> {
         use std::io::Read;
 
         let identity: age::x25519::Identity = identity
@@ -132,7 +123,10 @@ mod tests {
         let plaintext = b"secret data for testing";
 
         let ciphertext = engine.encrypt(plaintext, &[public]).unwrap();
-        assert_ne!(ciphertext, plaintext, "ciphertext should differ from plaintext");
+        assert_ne!(
+            ciphertext, plaintext,
+            "ciphertext should differ from plaintext"
+        );
 
         let decrypted = engine.decrypt(&ciphertext, &private).unwrap();
         assert_eq!(decrypted.as_slice(), plaintext);
@@ -148,8 +142,14 @@ mod tests {
         let ciphertext = engine.encrypt(plaintext, &[pub1, pub2]).unwrap();
 
         // Both recipients can decrypt
-        assert_eq!(engine.decrypt(&ciphertext, &priv1).unwrap().as_slice(), plaintext);
-        assert_eq!(engine.decrypt(&ciphertext, &priv2).unwrap().as_slice(), plaintext);
+        assert_eq!(
+            engine.decrypt(&ciphertext, &priv1).unwrap().as_slice(),
+            plaintext
+        );
+        assert_eq!(
+            engine.decrypt(&ciphertext, &priv2).unwrap().as_slice(),
+            plaintext
+        );
     }
 
     #[test]
@@ -170,7 +170,8 @@ mod tests {
         let result = engine.encrypt(b"data", &[]);
         assert!(result.is_err());
         assert!(
-            format!("{}", result.unwrap_err()).contains("At least one recipient public key is required")
+            format!("{}", result.unwrap_err())
+                .contains("At least one recipient public key is required")
         );
     }
 
@@ -209,9 +210,13 @@ mod tests {
         let (_, public) = engine.keygen().unwrap();
         let plaintext = b"same content";
 
-        let ct1 = engine.encrypt(plaintext, std::slice::from_ref(&public)).unwrap();
+        let ct1 = engine
+            .encrypt(plaintext, std::slice::from_ref(&public))
+            .unwrap();
         let ct2 = engine.encrypt(plaintext, &[public]).unwrap();
-        assert_ne!(ct1, ct2, "age uses random nonces, so ciphertext should differ");
+        assert_ne!(
+            ct1, ct2,
+            "age uses random nonces, so ciphertext should differ"
+        );
     }
 }
-

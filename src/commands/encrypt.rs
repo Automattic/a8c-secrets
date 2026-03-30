@@ -79,7 +79,9 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
             Ok(key) => Some(key),
             Err(e) => {
                 eprintln!("Warning: Cannot perform smart comparison — {e}");
-                eprintln!("Hint: Use --force to encrypt unconditionally, or run `a8c-secrets keys import`.");
+                eprintln!(
+                    "Hint: Use --force to encrypt unconditionally, or run `a8c-secrets keys import`."
+                );
                 return Err(e);
             }
         }
@@ -138,9 +140,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
     }
 
     println!();
-    println!(
-        "Encrypted {encrypted_count} file(s), skipped {skipped_count} unchanged."
-    );
+    println!("Encrypted {encrypted_count} file(s), skipped {skipped_count} unchanged.");
     if encrypted_count > 0 {
         println!("Remember to commit the .age file(s) in {REPO_SECRETS_DIR}/");
     }
@@ -163,7 +163,11 @@ mod tests {
 
     #[test]
     fn collect_missing_local_warnings_excludes_considered_files() {
-        let age_files = vec!["a.json".to_string(), "b.yml".to_string(), "c.toml".to_string()];
+        let age_files = vec![
+            "a.json".to_string(),
+            "b.yml".to_string(),
+            "c.toml".to_string(),
+        ];
         let local_files = BTreeSet::from(["a.json".to_string()]);
         let files_to_consider = BTreeSet::from(["b.yml".to_string()]);
 

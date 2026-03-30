@@ -58,8 +58,7 @@ pub fn run(args: &RmArgs) -> Result<()> {
     if age_exists {
         println!(
             "Remember to commit the deletion of {}/{}.age",
-            REPO_SECRETS_DIR,
-            args.file
+            REPO_SECRETS_DIR, args.file
         );
     }
 

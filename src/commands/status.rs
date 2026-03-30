@@ -3,10 +3,13 @@ use std::collections::BTreeSet;
 use anyhow::Result;
 
 use crate::config::{self, REPO_SECRETS_DIR};
-use crate::crypto::{derive_public_key, CryptoEngine};
+use crate::crypto::{CryptoEngine, derive_public_key};
 use zeroize::Zeroizing;
 
-fn collect_all_files(age_files: &BTreeSet<String>, local_files: &BTreeSet<String>) -> BTreeSet<String> {
+fn collect_all_files(
+    age_files: &BTreeSet<String>,
+    local_files: &BTreeSet<String>,
+) -> BTreeSet<String> {
     age_files.union(local_files).cloned().collect()
 }
 
@@ -47,7 +50,9 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
                     if public_keys.contains(&derived) {
                         println!("Private key:  configured (matches a key in keys.pub)");
                     } else {
-                        println!("Private key:  configured (WARNING: does not match any key in keys.pub)");
+                        println!(
+                            "Private key:  configured (WARNING: does not match any key in keys.pub)"
+                        );
                     }
                 }
                 Err(_) => {

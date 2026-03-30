@@ -3,17 +3,22 @@ use anyhow::{Context, Result};
 
 use crate::cli::RotateArgs;
 use crate::config::{self, REPO_SECRETS_DIR};
-use crate::crypto::{derive_public_key, CryptoEngine};
+use crate::crypto::{CryptoEngine, derive_public_key};
 
 fn identify_dev_ci_indices(public_keys: &[String], derived_public: &str) -> Result<(usize, usize)> {
     if public_keys.len() != 2 {
-        anyhow::bail!("Expected exactly 2 public keys in keys.pub, found {}", public_keys.len());
+        anyhow::bail!(
+            "Expected exactly 2 public keys in keys.pub, found {}",
+            public_keys.len()
+        );
     }
 
     let dev_idx = public_keys
         .iter()
         .position(|pk| pk == derived_public)
-        .context("Local private key does not match any key in keys.pub. Import the correct key first.")?;
+        .context(
+            "Local private key does not match any key in keys.pub. Import the correct key first.",
+        )?;
     let ci_idx = 1 - dev_idx;
     Ok((dev_idx, ci_idx))
 }

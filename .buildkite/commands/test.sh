@@ -10,10 +10,8 @@ make check-release
 echo "~~~ Running Tests..."
 make test
 
-# TODO: Re-enable once the first GitHub release has been created.
-# The install script fetches from GitHub releases, which don't exist yet.
-# echo "~~~ Testing \`install.sh\` script..."
-# printf "a8c-secrets command: %s\n" "$(command -v a8c-secrets || echo "not found")"
-# ./install.sh --prefix ./bin
-# export PATH=$PATH:./bin
-# a8c-secrets --version || echo "a8c-secrets not found"
+echo "~~~ Testing \`install.sh\` script..."
+printf "a8c-secrets on PATH before install: %s\n" "$(command -v a8c-secrets 2>/dev/null || echo "not found")"
+./install.sh --prefix ./bin
+export PATH="${PWD}/bin:${PATH}"
+a8c-secrets --version

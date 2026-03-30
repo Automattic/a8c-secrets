@@ -1,5 +1,5 @@
-use anyhow::{Context, Result};
 use age::secrecy::{ExposeSecret, SecretString};
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::{Component, Path, PathBuf};
@@ -75,15 +75,13 @@ pub fn find_repo_root() -> Result<PathBuf> {
         if repo_config_path(dir).exists() {
             return Ok(dir.to_path_buf());
         }
-        dir = dir
-            .parent()
-            .with_context(|| {
-                format!(
-                    "No {}/config.toml found in any parent of {}",
-                    REPO_SECRETS_DIR,
-                    cwd.display()
-                )
-            })?;
+        dir = dir.parent().with_context(|| {
+            format!(
+                "No {}/config.toml found in any parent of {}",
+                REPO_SECRETS_DIR,
+                cwd.display()
+            )
+        })?;
     }
 }
 
@@ -100,8 +98,8 @@ pub fn load_repo_config(repo_root: &Path) -> Result<RepoConfig> {
     let path = repo_config_path(repo_root);
     let content = std::fs::read_to_string(&path)
         .with_context(|| format!("Failed to read {}", path.display()))?;
-    let config: RepoConfig = toml::from_str(&content)
-        .with_context(|| format!("Failed to parse {}", path.display()))?;
+    let config: RepoConfig =
+        toml::from_str(&content).with_context(|| format!("Failed to parse {}", path.display()))?;
     validate_repo_slug(&config.repo)
         .with_context(|| format!("Invalid repo slug in {}", path.display()))?;
     Ok(config)
@@ -130,7 +128,9 @@ pub fn secrets_home() -> Result<PathBuf> {
 ///
 /// Returns an error if the local secrets home directory cannot be determined.
 pub fn private_key_path(repo_slug: &str) -> Result<PathBuf> {
-    Ok(secrets_home()?.join("keys").join(format!("{repo_slug}.key")))
+    Ok(secrets_home()?
+        .join("keys")
+        .join(format!("{repo_slug}.key")))
 }
 
 /// Path to the decrypted secrets directory for a given repo slug.
@@ -329,7 +329,9 @@ pub fn list_age_files(repo_root: &Path) -> Result<Vec<String>> {
     if !dir.exists() {
         return Ok(names);
     }
-    for entry in std::fs::read_dir(&dir).with_context(|| format!("Failed to read {}", dir.display()))? {
+    for entry in
+        std::fs::read_dir(&dir).with_context(|| format!("Failed to read {}", dir.display()))?
+    {
         let entry = entry?;
         let Some(name) = entry.file_name().to_str().map(String::from) else {
             eprintln!("Warning: skipping non-UTF-8 filename in {}", dir.display());
@@ -361,7 +363,9 @@ pub fn list_local_files(repo_slug: &str) -> Result<Vec<String>> {
     if !dir.exists() {
         return Ok(names);
     }
-    for entry in std::fs::read_dir(&dir).with_context(|| format!("Failed to read {}", dir.display()))? {
+    for entry in
+        std::fs::read_dir(&dir).with_context(|| format!("Failed to read {}", dir.display()))?
+    {
         let entry = entry?;
         if entry.file_type()?.is_file() {
             let Some(name) = entry.file_name().to_str().map(String::from) else {
@@ -369,10 +373,7 @@ pub fn list_local_files(repo_slug: &str) -> Result<Vec<String>> {
                 continue;
             };
             validate_secret_basename(&name).with_context(|| {
-                format!(
-                    "Invalid secret file name in {}: {name}",
-                    dir.display()
-                )
+                format!("Invalid secret file name in {}: {name}", dir.display())
             })?;
             names.push(name);
         }
@@ -567,11 +568,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let secrets = dir.path().join(REPO_SECRETS_DIR);
         fs::create_dir_all(&secrets).unwrap();
-        fs::write(
-            secrets.join("config.toml"),
-            "repo = \"test-repo\"\n",
-        )
-        .unwrap();
+        fs::write(secrets.join("config.toml"), "repo = \"test-repo\"\n").unwrap();
 
         let config = load_repo_config(dir.path()).unwrap();
         assert_eq!(config.repo, "test-repo");
@@ -589,11 +586,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let secrets = dir.path().join(REPO_SECRETS_DIR);
         fs::create_dir_all(&secrets).unwrap();
-        fs::write(
-            secrets.join("config.toml"),
-            "repo = \"../evil\"\n",
-        )
-        .unwrap();
+        fs::write(secrets.join("config.toml"), "repo = \"../evil\"\n").unwrap();
 
         let result = load_repo_config(dir.path());
         let err = result.err().expect("expected invalid slug to be rejected");
@@ -714,9 +707,7 @@ mod tests {
         let key = SecretString::new("not-a-valid-key".to_string().into());
         let result = save_private_key("test-repo", &key);
         assert!(result.is_err());
-        assert!(
-            format!("{}", result.unwrap_err()).contains("Invalid private key format"),
-        );
+        assert!(format!("{}", result.unwrap_err()).contains("Invalid private key format"),);
     }
 
     #[test]

@@ -20,7 +20,10 @@ pub fn run() -> Result<()> {
     let decrypted = config::decrypted_dir(slug)?;
 
     println!("This will permanently delete:");
-    println!("  {}  (repo config + encrypted files)", secrets_dir.display());
+    println!(
+        "  {}  (repo config + encrypted files)",
+        secrets_dir.display()
+    );
     if key_path.exists() {
         println!("  {}  (private key)", key_path.display());
     }

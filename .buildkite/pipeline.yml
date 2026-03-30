@@ -9,8 +9,8 @@ steps:
     agents:
       queue: default
     command: |
-      .buildkite/install_build_tools.sh
-      .buildkite/lint.sh
+      .buildkite/commands/install_build_tools.sh
+      .buildkite/commands/lint.sh
     notify:
       - github_commit_status: { context: "Lint" }
 
@@ -21,8 +21,8 @@ steps:
         agents:
           queue: mac
         command: |
-          .buildkite/install_build_tools.sh
-          .buildkite/test.sh
+          .buildkite/commands/install_build_tools.sh
+          .buildkite/commands/test.sh
         notify:
           - github_commit_status: { context: "Test macOS" }
 
@@ -31,8 +31,8 @@ steps:
         agents:
           queue: default
         command: |
-          .buildkite/install_build_tools.sh
-          .buildkite/test.sh
+          .buildkite/commands/install_build_tools.sh
+          .buildkite/commands/test.sh
         notify:
           - github_commit_status: { context: "Test Linux" }
 
@@ -41,8 +41,8 @@ steps:
         agents:
           queue: windows
         command: |
-          bash .buildkite/install_build_tools.sh
-          bash .buildkite/test.sh
+          bash .buildkite/commands/install_build_tools.sh
+          bash .buildkite/commands/test.sh
         notify:
           - github_commit_status: { context: "Test Windows" }
 
@@ -55,8 +55,8 @@ steps:
         agents:
           queue: mac
         command: |
-          .buildkite/install_build_tools.sh
-          .buildkite/build_and_upload_artifact.sh
+          .buildkite/commands/install_build_tools.sh
+          .buildkite/commands/build_and_upload_artifact.sh
         notify:
           - github_commit_status: { context: "Build macOS" }
 
@@ -66,8 +66,8 @@ steps:
         agents:
           queue: default
         command: |
-          .buildkite/install_build_tools.sh
-          .buildkite/build_and_upload_artifact.sh
+          .buildkite/commands/install_build_tools.sh
+          .buildkite/commands/build_and_upload_artifact.sh
         notify:
           - github_commit_status: { context: "Build Linux" }
 
@@ -77,8 +77,8 @@ steps:
         agents:
           queue: windows
         command: |
-          bash .buildkite/install_build_tools.sh
-          bash .buildkite/build_and_upload_artifact.sh .exe
+          bash .buildkite/commands/install_build_tools.sh
+          bash .buildkite/commands/build_and_upload_artifact.sh .exe
         notify:
           - github_commit_status: { context: "Build Windows" }
 
@@ -87,4 +87,4 @@ steps:
     depends_on: [build-macos, build-linux, build-windows]
     agents:
       queue: default
-    command: .buildkite/create_github_release.sh
+    command: .buildkite/commands/create_github_release.sh

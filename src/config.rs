@@ -324,7 +324,10 @@ pub fn list_age_files(repo_root: &Path) -> Result<Vec<String>> {
     }
     for entry in std::fs::read_dir(&dir).with_context(|| format!("Failed to read {}", dir.display()))? {
         let entry = entry?;
-        let name = entry.file_name().to_string_lossy().to_string();
+        let Some(name) = entry.file_name().to_str().map(String::from) else {
+            eprintln!("Warning: skipping non-UTF-8 filename in {}", dir.display());
+            continue;
+        };
         if let Some(stem) = name.strip_suffix(".age") {
             validate_secret_basename(stem).with_context(|| {
                 format!(
@@ -357,7 +360,10 @@ pub fn list_local_files(repo_slug: &str) -> Result<Vec<String>> {
     for entry in std::fs::read_dir(&dir).with_context(|| format!("Failed to read {}", dir.display()))? {
         let entry = entry?;
         if entry.file_type()?.is_file() {
-            let name = entry.file_name().to_string_lossy().to_string();
+            let Some(name) = entry.file_name().to_str().map(String::from) else {
+                eprintln!("Warning: skipping non-UTF-8 filename in {}", dir.display());
+                continue;
+            };
             validate_secret_basename(&name).with_context(|| {
                 format!(
                     "Invalid secret file name in {}: {name}",

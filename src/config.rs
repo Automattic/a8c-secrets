@@ -225,6 +225,16 @@ pub fn get_private_key(repo_slug: &str) -> Result<SecretString> {
 
 /// Validate and securely save a private key for the given repo.
 ///
+/// The parent directory ACL is applied immediately after ensuring the directory
+/// tree exists, including when the directory already existed (e.g. created
+/// manually with wrong permissions). The key is written via [`atomic_write`].
+///
+/// On Windows, replacing an existing key file in place can fail with
+/// `ERROR_ACCESS_DENIED` once the parent uses a protected owner-only DACL
+/// (`tempfile`'s persist step does not replace an existing destination). If an
+/// old key file is present, it is removed first on Windows only; on Unix,
+/// `atomic_write` replaces the destination atomically without that extra step.
+///
 /// # Errors
 ///
 /// Returns an error if the key format is invalid, key directories cannot be
@@ -236,12 +246,36 @@ pub fn save_private_key(repo_slug: &str, private_key: &SecretString) -> Result<P
 
     let key_path = private_key_path(repo_slug)?;
     if let Some(parent) = key_path.parent() {
-        std::fs::create_dir_all(parent)?;
-        permissions::set_secure_dir_permissions(parent)?;
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create key directory {}", parent.display()))?;
+        permissions::set_secure_dir_permissions(parent).with_context(|| {
+            format!(
+                "Failed to set permissions on key directory {}",
+                parent.display()
+            )
+        })?;
     }
 
-    std::fs::write(&key_path, format!("{}\n", private_key.expose_secret()))?;
-    permissions::set_secure_file_permissions(&key_path)?;
+    #[cfg(windows)]
+    if key_path.exists() {
+        std::fs::remove_file(&key_path).with_context(|| {
+            format!(
+                "Failed to remove existing private key at {}",
+                key_path.display()
+            )
+        })?;
+    }
+
+    let line = format!("{}\n", private_key.expose_secret());
+    atomic_write(&key_path, line.as_bytes())
+        .with_context(|| format!("Failed to write private key to {}", key_path.display()))?;
+
+    permissions::set_secure_file_permissions(&key_path).with_context(|| {
+        format!(
+            "Failed to set permissions on private key file {}",
+            key_path.display()
+        )
+    })?;
 
     Ok(key_path)
 }
@@ -735,5 +769,20 @@ mod tests {
 
         // Clean up
         let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn save_private_key_overwrites_existing() {
+        let slug = &format!("save-overwrite-{}", std::process::id());
+        let key1 = SecretString::new("AGE-SECRET-KEY-FIRSTAAA".to_string().into());
+        let key2 = SecretString::new("AGE-SECRET-KEY-SECONDBBB".to_string().into());
+        let path1 = save_private_key(slug, &key1).unwrap();
+        let path2 = save_private_key(slug, &key2).unwrap();
+        assert_eq!(path1, path2);
+        assert_eq!(
+            fs::read_to_string(&path2).unwrap().trim(),
+            "AGE-SECRET-KEY-SECONDBBB"
+        );
+        let _ = fs::remove_file(&path2);
     }
 }

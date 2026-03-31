@@ -61,7 +61,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &RotateArgs) -> Result<()> {
         (&updated_keys[1], &updated_keys[0])
     };
 
-    // Rewrite keys.pub with comments
+    // Rewrite keys.pub (optional # dev / # ci lines for human readers)
     let keys_pub_path = repo_root.join(REPO_SECRETS_DIR).join("keys.pub");
     std::fs::write(
         &keys_pub_path,

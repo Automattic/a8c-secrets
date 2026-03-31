@@ -39,16 +39,15 @@ pub fn run() -> Result<()> {
     println!();
 
     let keys_pub_path = repo_root.join(REPO_SECRETS_DIR).join("keys.pub");
-    let entries = keys::load_keys_pub_entries(&repo_root)?;
+    let public_keys = keys::load_public_keys(&repo_root)?;
 
     println!("Public keys ({}):", keys_pub_path.display());
-    for e in entries {
-        let label = e.label.unwrap_or_default();
+    for recipient in public_keys {
         let marker = match &derived_public {
-            Some(derived) if derived == &e.recipient => " <-- your key",
+            Some(derived) if derived == &recipient => " <-- your key",
             _ => "",
         };
-        println!("  {}  ({label}){marker}", e.recipient);
+        println!("  {recipient}{marker}");
     }
 
     Ok(())

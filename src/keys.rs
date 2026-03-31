@@ -30,7 +30,9 @@ pub fn secret_store_entry_name(slug: &str, for_ci: bool) -> String {
 ///
 /// Returns an error if the local secrets home directory cannot be determined.
 pub fn private_key_path(repo_slug: &str) -> Result<PathBuf> {
-    Ok(config::secrets_home()?.join("keys").join(format!("{repo_slug}.key")))
+    Ok(config::secrets_home()?
+        .join("keys")
+        .join(format!("{repo_slug}.key")))
 }
 
 /// Read the private key, checking `A8C_SECRETS_IDENTITY` env var first,
@@ -83,9 +85,8 @@ pub fn save_private_key(repo_slug: &str, private_key: &SecretString) -> Result<P
 
     let key_path = private_key_path(repo_slug)?;
     if let Some(parent) = key_path.parent() {
-        std::fs::create_dir_all(parent).with_context(|| {
-            format!("Failed to create key directory {}", parent.display())
-        })?;
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create key directory {}", parent.display()))?;
         permissions::set_secure_dir_permissions(parent).with_context(|| {
             format!(
                 "Failed to set permissions on key directory {}",
@@ -105,9 +106,8 @@ pub fn save_private_key(repo_slug: &str, private_key: &SecretString) -> Result<P
     }
 
     let line = format!("{}\n", private_key.expose_secret());
-    config::atomic_write(&key_path, line.as_bytes()).with_context(|| {
-        format!("Failed to write private key to {}", key_path.display())
-    })?;
+    config::atomic_write(&key_path, line.as_bytes())
+        .with_context(|| format!("Failed to write private key to {}", key_path.display()))?;
 
     permissions::set_secure_file_permissions(&key_path).with_context(|| {
         format!(
@@ -165,92 +165,41 @@ pub fn prompt_and_import_private_key(slug: &str) -> Result<SecretString> {
     Ok(key)
 }
 
-/// One recipient line from `.a8c-secrets/keys.pub` after parsing.
+/// Read public keys from `.a8c-secrets/keys.pub`.
 ///
-/// Human-oriented `#` lines immediately before a recipient apply as [`label`][Self::label]
-/// only to that recipient (the last `#` line wins if several precede one key). This matches
-/// `keys show` display and does not affect cryptographic identity (matching uses the recipient
-/// string only).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct KeysPubEntry {
-    /// 1-based line number of this recipient row in `keys.pub`.
-    pub line_number: usize,
-    /// Text after `#` on the most recent preceding comment-only line, if any.
-    pub label: Option<String>,
-    /// age X25519 recipient string (`age1…`).
-    pub recipient: String,
-}
-
-/// Parse `keys.pub` body: blank lines ignored; lines starting with `#` set the label for the
-/// next recipient; other non-empty lines are recipients (trimmed).
-pub fn parse_keys_pub(content: &str) -> Vec<KeysPubEntry> {
-    let mut pending_label: Option<String> = None;
-    let mut out = Vec::new();
-    for (idx, line) in content.lines().enumerate() {
-        let line_number = idx + 1;
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        if let Some(rest) = trimmed.strip_prefix('#') {
-            pending_label = Some(rest.trim().to_string());
-        } else {
-            out.push(KeysPubEntry {
-                line_number,
-                label: pending_label.take(),
-                recipient: trimmed.to_string(),
-            });
-        }
-    }
-    out
-}
-
-fn validate_keys_pub_entries(path: &Path, entries: &[KeysPubEntry]) -> Result<()> {
-    for e in entries {
-        e.recipient.parse::<Recipient>().map_err(|parse_err| {
-            anyhow::anyhow!(
-                "Invalid recipient public key in {} at line {}: {:?}: {parse_err}",
-                path.display(),
-                e.line_number,
-                e.recipient
-            )
-        })?;
-    }
-    Ok(())
-}
-
-/// Load and validate `.a8c-secrets/keys.pub` entries (labels + age recipients).
-///
-/// # Errors
-///
-/// Returns an error if the file cannot be read, there are no recipient lines, or any
-/// recipient is not a valid age X25519 public key.
-pub fn load_keys_pub_entries(repo_root: &Path) -> Result<Vec<KeysPubEntry>> {
-    let path = repo_root.join(REPO_SECRETS_DIR).join("keys.pub");
-    let content = std::fs::read_to_string(&path)
-        .with_context(|| format!("Failed to read {}", path.display()))?;
-    let entries = parse_keys_pub(&content);
-    if entries.is_empty() {
-        anyhow::bail!("No public keys found in {}", path.display());
-    }
-    validate_keys_pub_entries(&path, &entries)?;
-    Ok(entries)
-}
-
-/// Read public keys from `.a8c-secrets/keys.pub`, filtering out comment lines and blanks.
-///
-/// Uses the same parsing rules as [`parse_keys_pub`] and [`load_keys_pub_entries`]. Each
-/// recipient must be a valid age X25519 public key.
+/// Empty lines and lines whose trimmed text starts with `#` are skipped. Each remaining line
+/// must be a valid age X25519 public key (`age1…`).
 ///
 /// # Errors
 ///
 /// Returns an error if `keys.pub` cannot be read, contains no usable keys, or any key line
 /// is not a valid recipient.
 pub fn load_public_keys(repo_root: &Path) -> Result<Vec<String>> {
-    Ok(load_keys_pub_entries(repo_root)?
-        .into_iter()
-        .map(|e| e.recipient)
-        .collect())
+    let path = repo_root.join(REPO_SECRETS_DIR).join("keys.pub");
+    let content = std::fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read {}", path.display()))?;
+
+    let mut out = Vec::new();
+    for (idx, line) in content.lines().enumerate() {
+        let line_number = idx + 1;
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        trimmed.parse::<Recipient>().map_err(|parse_err| {
+            anyhow::anyhow!(
+                "Invalid recipient public key in {} at line {}: {:?}: {parse_err}",
+                path.display(),
+                line_number,
+                trimmed
+            )
+        })?;
+        out.push(trimmed.to_string());
+    }
+    if out.is_empty() {
+        anyhow::bail!("No public keys found in {}", path.display());
+    }
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -258,8 +207,8 @@ mod tests {
     use super::*;
     use std::fs;
 
-    use age::secrecy::SecretString;
     use crate::crypto::{AgeCrateEngine, CryptoEngine};
+    use age::secrecy::SecretString;
 
     #[test]
     fn secret_store_entry_name_dev_substitutes_slug() {
@@ -278,23 +227,18 @@ mod tests {
     }
 
     #[test]
-    fn parse_keys_pub_associates_last_comment_before_key_as_label() {
-        let got = parse_keys_pub("# dev\n# note\nPK1\n\n# ci\nPK2\n");
-        assert_eq!(got.len(), 2);
-        assert_eq!(got[0].line_number, 3);
-        assert_eq!(got[0].label.as_deref(), Some("note"));
-        assert_eq!(got[0].recipient, "PK1");
-        assert_eq!(got[1].line_number, 6);
-        assert_eq!(got[1].label.as_deref(), Some("ci"));
-        assert_eq!(got[1].recipient, "PK2");
-    }
-
-    #[test]
-    fn parse_keys_pub_skips_blank_lines() {
-        let got = parse_keys_pub("\n  \n# a\nk1\n");
-        assert_eq!(got.len(), 1);
-        assert_eq!(got[0].recipient, "k1");
-        assert_eq!(got[0].label.as_deref(), Some("a"));
+    fn load_public_keys_skips_whitespace_only_and_comment_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let secrets = dir.path().join(REPO_SECRETS_DIR);
+        fs::create_dir_all(&secrets).unwrap();
+        let engine = AgeCrateEngine::new();
+        let (_, pub1) = engine.keygen().unwrap();
+        fs::write(
+            secrets.join("keys.pub"),
+            format!("\n  \n# dev\n{pub1}\n# note\n"),
+        )
+        .unwrap();
+        assert_eq!(load_public_keys(dir.path()).unwrap(), vec![pub1]);
     }
 
     #[test]
@@ -352,9 +296,7 @@ mod tests {
         let key = SecretString::new("not-a-valid-key".to_string().into());
         let result = save_private_key("test-repo", &key);
         assert!(result.is_err());
-        assert!(
-            format!("{}", result.unwrap_err()).contains("Invalid private key format"),
-        );
+        assert!(format!("{}", result.unwrap_err()).contains("Invalid private key format"),);
     }
 
     #[test]

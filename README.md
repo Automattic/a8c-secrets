@@ -79,7 +79,7 @@ In the repo (committed):              On the developer's machine (never in git):
 
 **Why decrypt outside the working tree?** Decrypted secrets in `~/.a8c-secrets/<repo>/` can never be accidentally committed (even a `.gitignore` typo can't expose them) and are invisible to AI agents restricted to the repo working copy.
 
-**Two key pairs per repo (dev + CI).** The dev private key is shared by all developers via Secret Store. The CI private key is injected as a Buildkite secret via `A8C_SECRETS_IDENTITY`. Key identification uses public key derivation (matching your private key against `keys.pub`), not comment labels — so `# dev` / `# ci` comments are for humans only.
+**Two key pairs per repo (dev + CI).** The dev private key is shared by all developers via Secret Store. The CI private key is injected as a Buildkite secret via `A8C_SECRETS_IDENTITY`. Which key is yours is determined by public key derivation (matching your private key against `keys.pub`). Lines starting with `#` in `keys.pub` are comments and are ignored when reading recipients (same as age); they are optional for humans only.
 
 **Secret Store entry names** (human-created; replace `<repo>` with your repo slug): dev private key → `a8c-secrets dev private key for <repo>`; CI private key → `a8c-secrets CI private key for <repo>`.
 

@@ -173,13 +173,13 @@ pub struct KeysSub {
 
 #[derive(Debug, Subcommand)]
 pub enum KeysCommand {
-    /// Display private key path and public keys with dev/ci identification
+    /// Display private key path and public keys from keys.pub
     #[command(long_about = "\
 Display key information for the current repository.
 
 Shows the private key file path, derives the corresponding public key,
-and lists all public keys from .a8c-secrets/keys.pub. Identifies which
-key is dev (matches your local private key) and which is CI.")]
+and lists all public keys from .a8c-secrets/keys.pub. Marks the entry
+that matches your local private key (if configured).")]
     Show,
 
     /// Import a private key from the Secret Store

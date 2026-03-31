@@ -8,6 +8,7 @@ use anyhow::{Context, Result};
 use std::io::{self, BufRead, IsTerminal};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use zeroize::Zeroizing;
 
 use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::{PrivateKey, PublicKey};
@@ -55,22 +56,25 @@ fn parse_private_key_trimmed(label: &str, raw: &str) -> Result<PrivateKey> {
 /// Returns an error if the env var points to an unreadable file, if the key
 /// file cannot be read, or if no key is configured.
 pub fn get_private_key(repo_slug: &str) -> Result<PrivateKey> {
-    if let Ok(val) = std::env::var("A8C_SECRETS_IDENTITY") {
+    if let Ok(raw_val) = std::env::var("A8C_SECRETS_IDENTITY") {
+        let val = Zeroizing::new(raw_val);
         if val.starts_with("AGE-SECRET-KEY-") {
-            return parse_private_key_trimmed("A8C_SECRETS_IDENTITY", &val);
+            return parse_private_key_trimmed("A8C_SECRETS_IDENTITY", val.as_str());
         }
-        let contents = std::fs::read_to_string(&val)
-            .with_context(|| format!("Failed to read identity file: {val}"))?;
-        return parse_private_key_trimmed(&val, &contents);
+        let contents = Zeroizing::new(
+            std::fs::read_to_string(val.as_str())
+                .with_context(|| format!("Failed to read identity file: {}", val.as_str()))?,
+        );
+        return parse_private_key_trimmed(val.as_str(), contents.as_str());
     }
     let path = private_key_path(repo_slug)?;
-    let contents = std::fs::read_to_string(&path).with_context(|| {
+    let contents = Zeroizing::new(std::fs::read_to_string(&path).with_context(|| {
         format!(
             "No private key found at {}. Run `a8c-secrets keys import` to set up your key.",
             path.display()
         )
-    })?;
-    parse_private_key_trimmed(&path.display().to_string(), &contents)
+    })?);
+    parse_private_key_trimmed(&path.display().to_string(), contents.as_str())
 }
 
 /// Validate and securely save a private key for the given repo.
@@ -112,7 +116,8 @@ pub fn save_private_key(repo_slug: &str, private_key: &PrivateKey) -> Result<Pat
         })?;
     }
 
-    let line = format!("{}\n", private_key.to_string().expose_secret());
+    let private_key_string = private_key.to_string();
+    let line = Zeroizing::new(format!("{}\n", private_key_string.expose_secret()));
     config::atomic_write(&key_path, line.as_bytes())
         .with_context(|| format!("Failed to write private key to {}", key_path.display()))?;
 
@@ -150,9 +155,9 @@ pub fn prompt_and_import_private_key(slug: &str) -> Result<PrivateKey> {
     println!();
 
     let raw = if io::stdin().is_terminal() {
-        rpassword::prompt_password("Paste private key: ")?
+        Zeroizing::new(rpassword::prompt_password("Paste private key: ")?)
     } else {
-        let mut line = String::new();
+        let mut line = Zeroizing::new(String::new());
         io::stdin().lock().read_line(&mut line)?;
         line
     };

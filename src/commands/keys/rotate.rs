@@ -3,6 +3,8 @@ use std::path::Path;
 use age::secrecy::ExposeSecret;
 use anyhow::{Context, Result};
 use inquire::{Confirm, InquireError, Select};
+use std::io::Write;
+use zeroize::Zeroizing;
 
 use super::{PUBLIC_KEY_LIST_LEGEND, PublicKeyListRow};
 use crate::config::{self, REPO_SECRETS_DIR};
@@ -129,6 +131,15 @@ fn print_confirmation_plan(
     println!();
 }
 
+fn print_private_key_block(title: &str, key: &PrivateKey) -> Result<()> {
+    let key_text = Zeroizing::new(format!("{}\n", key.to_string().expose_secret()));
+    let mut out = std::io::stdout().lock();
+    writeln!(out, "--- {title} ---")?;
+    out.write_all(key_text.as_bytes())?;
+    writeln!(out)?;
+    Ok(())
+}
+
 /// Applies key rotation after interactive confirmation: new keypair, `keys.pub` update,
 /// re-encryption of `.age` files, optional local private key file update.
 ///
@@ -183,9 +194,7 @@ pub(crate) fn apply_key_rotation(
     println!();
     println!("Rotated the selected public key.");
     println!();
-    println!("--- New private key ---");
-    println!("{}", new_private_key.to_string().expose_secret());
-    println!();
+    print_private_key_block("New private key", &new_private_key)?;
 
     println!("NOTE: This does not rotate the actual secret values inside the encrypted files.");
 

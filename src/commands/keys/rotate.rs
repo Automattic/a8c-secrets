@@ -3,7 +3,7 @@ use std::path::Path;
 use age::secrecy::ExposeSecret;
 use anyhow::{Context, Result};
 use inquire::{Confirm, InquireError, Select};
-use std::io::Write;
+use std::io::{IsTerminal, Write};
 use zeroize::Zeroizing;
 
 use super::{PUBLIC_KEY_LIST_LEGEND, PublicKeyListRow};
@@ -208,6 +208,12 @@ pub(crate) fn apply_key_rotation(
 /// Returns an error if repo/config/key discovery fails, the user aborts, or
 /// re-encryption reads/writes fail.
 pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
+    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+        anyhow::bail!(
+            "`a8c-secrets keys rotate` must run in an interactive terminal (TTY) because it prints a private key to stdout."
+        );
+    }
+
     let repo_root = config::find_repo_root()?;
     let repo_config = config::load_repo_config(&repo_root)?;
     let slug = &repo_config.repo;

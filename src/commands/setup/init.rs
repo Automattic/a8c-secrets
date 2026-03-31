@@ -1,4 +1,4 @@
-use std::io::{self, Write};
+use std::io::{self, IsTerminal, Write};
 
 use age::secrecy::ExposeSecret;
 use anyhow::{Context, Result};
@@ -25,6 +25,12 @@ fn print_private_key_block(title: &str, key: &PrivateKey) -> Result<()> {
 /// Returns an error if initialization paths cannot be created, user input
 /// fails, key generation fails, or config/key files cannot be written.
 pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
+    if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
+        anyhow::bail!(
+            "`a8c-secrets setup init` must run in an interactive terminal (TTY) because it prints private keys to stdout."
+        );
+    }
+
     let cwd = std::env::current_dir().context("Failed to get current directory")?;
     let secrets_dir = cwd.join(REPO_SECRETS_DIR);
 

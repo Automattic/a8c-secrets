@@ -458,7 +458,7 @@ fn encrypt_new_plaintext_then_decrypt_roundtrip() {
 }
 
 #[test]
-fn setup_init_with_git_remote_then_encrypt_decrypt_roundtrip() {
+fn setup_init_requires_interactive_tty() {
     let temp = tempfile::tempdir().unwrap();
     let repo_dir = temp.path().join("repo");
     let home_dir = temp.path().join("home");
@@ -481,33 +481,23 @@ fn setup_init_with_git_remote_then_encrypt_decrypt_roundtrip() {
         writeln!(stdin).unwrap();
     }
 
-    let status = child.wait().expect("wait on setup init");
+    let out = child
+        .wait_with_output()
+        .expect("wait_with_output on setup init");
     assert!(
-        status.success(),
-        "setup init should succeed (requires git on PATH)"
+        !out.status.success(),
+        "setup init should fail when stdin/stdout are not TTYs"
     );
-
-    let slug = "demo";
-    assert!(repo_dir.join(".a8c-secrets/config.toml").exists());
-
-    let plaintext = b"e2e-from-init";
-    let local_dir = secrets_home(&home_dir).join(slug);
-    fs::create_dir_all(&local_dir).unwrap();
-    fs::write(local_dir.join("note.txt"), plaintext).unwrap();
-
-    configured_command(&repo_dir, &home_dir)
-        .args(["encrypt", "note.txt"])
-        .assert()
-        .success();
-
-    fs::remove_file(local_dir.join("note.txt")).unwrap();
-
-    configured_command(&repo_dir, &home_dir)
-        .args(["decrypt", "--non-interactive"])
-        .assert()
-        .success();
-
-    assert_eq!(fs::read(local_dir.join("note.txt")).unwrap(), plaintext);
+    let combined =
+        String::from_utf8_lossy(&out.stderr).to_string() + &String::from_utf8_lossy(&out.stdout);
+    assert!(
+        combined.contains("interactive terminal (TTY)"),
+        "expected TTY requirement message, got: {combined}"
+    );
+    assert!(
+        !repo_dir.join(".a8c-secrets/config.toml").exists(),
+        "setup init should fail before writing config in non-TTY mode"
+    );
 }
 
 #[test]

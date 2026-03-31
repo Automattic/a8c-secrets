@@ -1,6 +1,11 @@
-use age::secrecy::{ExposeSecret, SecretString};
 use anyhow::Result;
 use zeroize::Zeroizing;
+
+/// X25519 age identity (private key material).
+pub type PrivateKey = age::x25519::Identity;
+
+/// X25519 age recipient (public key).
+pub type PublicKey = age::x25519::Recipient;
 
 /// Abstraction over age encryption operations.
 ///
@@ -8,15 +13,15 @@ use zeroize::Zeroizing;
 /// This trait allows swapping to a CLI-subprocess engine if needed later.
 pub trait CryptoEngine {
     /// Encrypt plaintext for the given recipients (public keys).
-    fn encrypt(&self, plaintext: &[u8], recipients: &[String]) -> Result<Vec<u8>>;
+    fn encrypt(&self, plaintext: &[u8], recipients: &[PublicKey]) -> Result<Vec<u8>>;
 
     /// Decrypt ciphertext using the given identity (private key).
     ///
     /// Plaintext is returned in a [`Zeroizing`] buffer so it is cleared on drop.
-    fn decrypt(&self, ciphertext: &[u8], identity: &SecretString) -> Result<Zeroizing<Vec<u8>>>;
+    fn decrypt(&self, ciphertext: &[u8], identity: &PrivateKey) -> Result<Zeroizing<Vec<u8>>>;
 
     /// Generate a new key pair. Returns (`private_key`, `public_key`).
-    fn keygen(&self) -> Result<(SecretString, String)>;
+    fn keygen(&self) -> Result<(PrivateKey, PublicKey)>;
 }
 
 /// Library-based engine using the `age` Rust crate.
@@ -30,18 +35,12 @@ impl AgeCrateEngine {
 }
 
 impl CryptoEngine for AgeCrateEngine {
-    fn encrypt(&self, plaintext: &[u8], recipients: &[String]) -> Result<Vec<u8>> {
+    fn encrypt(&self, plaintext: &[u8], recipients: &[PublicKey]) -> Result<Vec<u8>> {
         use std::io::Write;
 
         if recipients.is_empty() {
             anyhow::bail!("At least one recipient public key is required");
         }
-
-        let recipients: Vec<age::x25519::Recipient> = recipients
-            .iter()
-            .map(|r| r.parse())
-            .collect::<Result<_, _>>()
-            .map_err(|e| anyhow::anyhow!("Invalid recipient public key: {e}"))?;
 
         let encryptor =
             age::Encryptor::with_recipients(recipients.iter().map(|r| r as &dyn age::Recipient))
@@ -55,51 +54,32 @@ impl CryptoEngine for AgeCrateEngine {
         Ok(encrypted)
     }
 
-    fn decrypt(&self, ciphertext: &[u8], identity: &SecretString) -> Result<Zeroizing<Vec<u8>>> {
+    fn decrypt(&self, ciphertext: &[u8], identity: &PrivateKey) -> Result<Zeroizing<Vec<u8>>> {
         use std::io::Read;
-
-        let identity: age::x25519::Identity = identity
-            .expose_secret()
-            .parse()
-            .map_err(|e| anyhow::anyhow!("Invalid private key: {e}"))?;
 
         let decryptor = age::Decryptor::new(ciphertext)
             .map_err(|e| anyhow::anyhow!("Failed to parse age file: {e}"))?;
 
         let mut decrypted = vec![];
         let mut reader = decryptor
-            .decrypt(std::iter::once(&identity as &dyn age::Identity))
+            .decrypt(std::iter::once(identity as &dyn age::Identity))
             .map_err(|e| anyhow::anyhow!("Decryption failed: {e}"))?;
         reader.read_to_end(&mut decrypted)?;
 
         Ok(Zeroizing::new(decrypted))
     }
 
-    fn keygen(&self) -> Result<(SecretString, String)> {
-        let secret = age::x25519::Identity::generate();
+    fn keygen(&self) -> Result<(PrivateKey, PublicKey)> {
+        let secret = PrivateKey::generate();
         let public = secret.to_public();
-        Ok((secret.to_string(), public.to_string()))
+        Ok((secret, public))
     }
-}
-
-/// Derive the public key from a private key.
-///
-/// This is used to identify which entry in `keys.pub` matches a local private
-/// key (for example in `keys show`, `status`, and key rotation flows).
-///
-/// # Errors
-///
-/// Returns an error if the private key cannot be parsed.
-pub fn derive_public_key(private_key: &SecretString) -> Result<String> {
-    let identity: age::x25519::Identity = private_key
-        .expose_secret()
-        .parse()
-        .map_err(|e| anyhow::anyhow!("Invalid private key: {e}"))?;
-    Ok(identity.to_public().to_string())
 }
 
 #[cfg(test)]
 mod tests {
+    use age::secrecy::ExposeSecret;
+
     use super::*;
 
     fn crypto_engine() -> AgeCrateEngine {
@@ -110,10 +90,13 @@ mod tests {
     fn keygen_produces_valid_key_formats() {
         let (private, public) = crypto_engine().keygen().unwrap();
         assert!(
-            private.expose_secret().starts_with("AGE-SECRET-KEY-"),
+            private
+                .to_string()
+                .expose_secret()
+                .starts_with("AGE-SECRET-KEY-"),
             "private key format"
         );
-        assert!(public.starts_with("age1"), "public key format");
+        assert!(public.to_string().starts_with("age1"), "public key format");
     }
 
     #[test]
@@ -122,7 +105,9 @@ mod tests {
         let (private, public) = engine.keygen().unwrap();
         let plaintext = b"secret data for testing";
 
-        let ciphertext = engine.encrypt(plaintext, &[public]).unwrap();
+        let ciphertext = engine
+            .encrypt(plaintext, std::slice::from_ref(&public))
+            .unwrap();
         assert_ne!(
             ciphertext, plaintext,
             "ciphertext should differ from plaintext"
@@ -157,7 +142,9 @@ mod tests {
         let engine = crypto_engine();
         let (_, pub1) = engine.keygen().unwrap();
 
-        let ciphertext = engine.encrypt(b"secret", &[pub1]).unwrap();
+        let ciphertext = engine
+            .encrypt(b"secret", std::slice::from_ref(&pub1))
+            .unwrap();
 
         let (wrong_private, _) = engine.keygen().unwrap();
         let result = engine.decrypt(&ciphertext, &wrong_private);
@@ -176,9 +163,8 @@ mod tests {
     }
 
     #[test]
-    fn encrypt_invalid_recipient_errors() {
-        let engine = crypto_engine();
-        let result = engine.encrypt(b"data", &["not-a-valid-key".to_string()]);
+    fn invalid_public_key_string_does_not_parse() {
+        let result: Result<PublicKey, _> = "not-a-valid-key".parse();
         assert!(result.is_err());
     }
 
@@ -191,16 +177,15 @@ mod tests {
     }
 
     #[test]
-    fn derive_public_key_matches_keygen() {
+    fn to_public_matches_keygen_public() {
         let engine = crypto_engine();
         let (private, public) = engine.keygen().unwrap();
-        let derived = derive_public_key(&private).unwrap();
-        assert_eq!(derived, public);
+        assert_eq!(private.to_public(), public);
     }
 
     #[test]
-    fn derive_public_key_invalid_input() {
-        let result = derive_public_key(&SecretString::new("not-a-key".to_string().into()));
+    fn invalid_private_key_string_does_not_parse() {
+        let result: Result<PrivateKey, _> = "not-a-key".parse();
         assert!(result.is_err());
     }
 
@@ -213,7 +198,9 @@ mod tests {
         let ct1 = engine
             .encrypt(plaintext, std::slice::from_ref(&public))
             .unwrap();
-        let ct2 = engine.encrypt(plaintext, &[public]).unwrap();
+        let ct2 = engine
+            .encrypt(plaintext, std::slice::from_ref(&public))
+            .unwrap();
         assert_ne!(
             ct1, ct2,
             "age uses random nonces, so ciphertext should differ"

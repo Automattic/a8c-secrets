@@ -1,15 +1,16 @@
 //! Local private keys, `.a8c-secrets/keys.pub` recipients, and Secret Store naming.
 //!
 //! Repository layout and paths under [`crate::config::REPO_SECRETS_DIR`] are defined in
-//! [`config`](crate::config); this module owns age key material and `keys.pub` parsing.
+//! the [`config`](crate::config) module; this module owns age key material and `keys.pub` parsing.
 
-use age::secrecy::{ExposeSecret, SecretString};
-use age::x25519::Recipient;
+use age::secrecy::ExposeSecret;
 use anyhow::{Context, Result};
 use std::io::{self, BufRead, IsTerminal};
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 use crate::config::{self, REPO_SECRETS_DIR};
+use crate::crypto::{PrivateKey, PublicKey};
 use crate::permissions;
 
 /// Base URL for Secret Store (browse / create entries).
@@ -40,6 +41,12 @@ pub fn public_keys_path(repo_root: &Path) -> PathBuf {
     repo_root.join(REPO_SECRETS_DIR).join("keys.pub")
 }
 
+fn parse_private_key_trimmed(label: &str, raw: &str) -> Result<PrivateKey> {
+    raw.trim().parse::<PrivateKey>().map_err(|e| {
+        anyhow::anyhow!("Invalid private key in {label}: {e}")
+    })
+}
+
 /// Read the private key, checking `A8C_SECRETS_IDENTITY` env var first,
 /// then falling back to the key file on disk.
 ///
@@ -47,24 +54,23 @@ pub fn public_keys_path(repo_root: &Path) -> PathBuf {
 ///
 /// Returns an error if the env var points to an unreadable file, if the key
 /// file cannot be read, or if no key is configured.
-pub fn get_private_key(repo_slug: &str) -> Result<SecretString> {
+pub fn get_private_key(repo_slug: &str) -> Result<PrivateKey> {
     if let Ok(val) = std::env::var("A8C_SECRETS_IDENTITY") {
         if val.starts_with("AGE-SECRET-KEY-") {
-            return Ok(SecretString::new(val.into()));
+            return parse_private_key_trimmed("A8C_SECRETS_IDENTITY", &val);
         }
-        return std::fs::read_to_string(&val)
-            .map(|s| SecretString::new(s.trim().to_string().into()))
-            .with_context(|| format!("Failed to read identity file: {val}"));
+        let contents = std::fs::read_to_string(&val)
+            .with_context(|| format!("Failed to read identity file: {val}"))?;
+        return parse_private_key_trimmed(&val, &contents);
     }
     let path = private_key_path(repo_slug)?;
-    std::fs::read_to_string(&path)
-        .map(|s| SecretString::new(s.trim().to_string().into()))
-        .with_context(|| {
-            format!(
-                "No private key found at {}. Run `a8c-secrets keys import` to set up your key.",
-                path.display()
-            )
-        })
+    let contents = std::fs::read_to_string(&path).with_context(|| {
+        format!(
+            "No private key found at {}. Run `a8c-secrets keys import` to set up your key.",
+            path.display()
+        )
+    })?;
+    parse_private_key_trimmed(&path.display().to_string(), &contents)
 }
 
 /// Validate and securely save a private key for the given repo.
@@ -81,13 +87,9 @@ pub fn get_private_key(repo_slug: &str) -> Result<SecretString> {
 ///
 /// # Errors
 ///
-/// Returns an error if the key format is invalid, key directories cannot be
+/// Returns an error if key directories cannot be
 /// created, permissions cannot be set, or the key file cannot be written.
-pub fn save_private_key(repo_slug: &str, private_key: &SecretString) -> Result<PathBuf> {
-    if !private_key.expose_secret().starts_with("AGE-SECRET-KEY-") {
-        anyhow::bail!("Invalid private key format. Expected AGE-SECRET-KEY-...");
-    }
-
+pub fn save_private_key(repo_slug: &str, private_key: &PrivateKey) -> Result<PathBuf> {
     let key_path = private_key_path(repo_slug)?;
     if let Some(parent) = key_path.parent() {
         std::fs::create_dir_all(parent)
@@ -110,7 +112,7 @@ pub fn save_private_key(repo_slug: &str, private_key: &SecretString) -> Result<P
         })?;
     }
 
-    let line = format!("{}\n", private_key.expose_secret());
+    let line = format!("{}\n", private_key.to_string().expose_secret());
     config::atomic_write(&key_path, line.as_bytes())
         .with_context(|| format!("Failed to write private key to {}", key_path.display()))?;
 
@@ -136,7 +138,7 @@ pub fn save_private_key(repo_slug: &str, private_key: &SecretString) -> Result<P
 ///
 /// Returns an error if terminal input fails, key validation fails, or key
 /// persistence fails.
-pub fn prompt_and_import_private_key(slug: &str) -> Result<SecretString> {
+pub fn prompt_and_import_private_key(slug: &str) -> Result<PrivateKey> {
     println!("Import private key for '{slug}'");
     println!();
     println!("Get the dev private key from Secret Store:");
@@ -154,7 +156,9 @@ pub fn prompt_and_import_private_key(slug: &str) -> Result<SecretString> {
         io::stdin().lock().read_line(&mut line)?;
         line
     };
-    let key = SecretString::new(raw.trim().to_string().into());
+    let key = PrivateKey::from_str(raw.trim()).map_err(|e| {
+        anyhow::anyhow!("Invalid private key: {e}")
+    })?;
 
     let key_path = private_key_path(slug)?;
     let existed = key_path.exists();
@@ -179,7 +183,7 @@ pub fn prompt_and_import_private_key(slug: &str) -> Result<SecretString> {
 ///
 /// Returns an error if `keys.pub` cannot be read, contains no usable keys, or any key line
 /// is not a valid recipient.
-pub fn load_public_keys(repo_root: &Path) -> Result<Vec<String>> {
+pub fn load_public_keys(repo_root: &Path) -> Result<Vec<PublicKey>> {
     let path = public_keys_path(repo_root);
     let content = std::fs::read_to_string(&path)
         .with_context(|| format!("Failed to read {}", path.display()))?;
@@ -191,7 +195,7 @@ pub fn load_public_keys(repo_root: &Path) -> Result<Vec<String>> {
         if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
         }
-        trimmed.parse::<Recipient>().map_err(|parse_err| {
+        let recipient = trimmed.parse::<PublicKey>().map_err(|parse_err| {
             anyhow::anyhow!(
                 "Invalid recipient public key in {} at line {}: {:?}: {parse_err}",
                 path.display(),
@@ -199,7 +203,7 @@ pub fn load_public_keys(repo_root: &Path) -> Result<Vec<String>> {
                 trimmed
             )
         })?;
-        out.push(trimmed.to_string());
+        out.push(recipient);
     }
     if out.is_empty() {
         anyhow::bail!("No public keys found in {}", path.display());
@@ -208,7 +212,7 @@ pub fn load_public_keys(repo_root: &Path) -> Result<Vec<String>> {
 }
 
 /// Replace every recipient line in `keys.pub` whose trimmed value equals
-/// `old_public.trim()` with `new_public`.
+/// `old_public` with `new_public`.
 ///
 /// Comment lines, blank lines, and other non-recipient lines are left unchanged.
 /// Recipient lines are the same as those read by [`load_public_keys`] (non-empty,
@@ -216,22 +220,13 @@ pub fn load_public_keys(repo_root: &Path) -> Result<Vec<String>> {
 ///
 /// # Errors
 ///
-/// Returns an error if the file cannot be read or written, if `old_public` or
-/// `new_public` is not a valid recipient, if no matching recipient line exists,
+/// Returns an error if the file cannot be read or written, if no matching recipient line exists,
 /// or if a non-comment line fails recipient parsing.
 pub fn replace_recipient_public_key_in_keys_pub(
     repo_root: &Path,
-    old_public: &str,
-    new_public: &str,
+    old_public: &PublicKey,
+    new_public: &PublicKey,
 ) -> Result<()> {
-    let old_trim = old_public.trim();
-    old_trim
-        .parse::<Recipient>()
-        .map_err(|e| anyhow::anyhow!("Invalid old public key: {e}"))?;
-    new_public
-        .parse::<Recipient>()
-        .map_err(|e| anyhow::anyhow!("Invalid new public key: {e}"))?;
-
     let path = public_keys_path(repo_root);
     let content = std::fs::read_to_string(&path)
         .with_context(|| format!("Failed to read {}", path.display()))?;
@@ -239,22 +234,20 @@ pub fn replace_recipient_public_key_in_keys_pub(
     let mut out_lines: Vec<String> = Vec::new();
     let mut replace_count = 0usize;
 
-    for (idx, line) in content.lines().enumerate() {
+    for line in content.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() || trimmed.starts_with('#') {
             out_lines.push(line.to_string());
             continue;
         }
-        let line_no = idx + 1;
-        trimmed.parse::<Recipient>().map_err(|parse_err| {
+        let parsed = trimmed.parse::<PublicKey>().map_err(|parse_err| {
             anyhow::anyhow!(
-                "Invalid recipient public key in {} on line {}: {:?}: {parse_err}",
+                "Invalid recipient public key in {}: {:?}: {parse_err}",
                 path.display(),
-                line_no,
                 trimmed
             )
         })?;
-        if trimmed == old_trim {
+        if &parsed == old_public {
             out_lines.push(new_public.to_string());
             replace_count += 1;
         } else {
@@ -285,7 +278,6 @@ mod tests {
     use std::fs;
 
     use crate::crypto::{AgeCrateEngine, CryptoEngine};
-    use age::secrecy::SecretString;
 
     #[test]
     fn secret_store_entry_name_dev_substitutes_slug() {
@@ -385,10 +377,10 @@ mod tests {
 
         let after = fs::read_to_string(public_keys_path(dir.path())).unwrap();
         assert!(after.contains("# dev"));
-        assert!(after.contains(&pub1));
+        assert!(after.contains(&pub1.to_string()));
         assert!(after.contains("# ci"));
-        assert!(after.contains(&pub3));
-        assert!(!after.contains(&pub2));
+        assert!(after.contains(&pub3.to_string()));
+        assert!(!after.contains(&pub2.to_string()));
         assert!(after.contains("# tail"));
         assert!(after.contains("\n\n"));
     }
@@ -411,7 +403,7 @@ mod tests {
 
         replace_recipient_public_key_in_keys_pub(dir.path(), &pub1, &new1).unwrap();
         let keys = load_public_keys(dir.path()).unwrap();
-        assert_eq!(keys, vec![new1.clone(), pub2]);
+        assert_eq!(keys, vec![new1, pub2]);
     }
 
     #[test]
@@ -451,26 +443,20 @@ mod tests {
         let keys = load_public_keys(dir.path()).unwrap();
         assert_eq!(keys, vec![new1.clone(), new1.clone()]);
         let raw = fs::read_to_string(public_keys_path(dir.path())).unwrap();
-        assert!(!raw.contains(&pub1));
-    }
-
-    #[test]
-    fn save_private_key_rejects_invalid_prefix() {
-        let key = SecretString::new("not-a-valid-key".to_string().into());
-        let result = save_private_key("test-repo", &key);
-        assert!(result.is_err());
-        assert!(format!("{}", result.unwrap_err()).contains("Invalid private key format"),);
+        assert!(!raw.contains(&pub1.to_string()));
     }
 
     #[test]
     fn save_private_key_creates_dirs_and_writes_file() {
         let slug = &format!("save-test-{}", std::process::id());
-        let key = SecretString::new("AGE-SECRET-KEY-TESTVALUE".to_string().into());
-        let path = save_private_key(slug, &key).unwrap();
+        let engine = AgeCrateEngine::new();
+        let (private, _) = engine.keygen().unwrap();
+        let expected_line = private.to_string().expose_secret().to_string();
+        let path = save_private_key(slug, &private).unwrap();
 
         assert!(path.exists());
         let content = fs::read_to_string(&path).unwrap();
-        assert_eq!(content.trim(), "AGE-SECRET-KEY-TESTVALUE");
+        assert_eq!(content.trim(), expected_line);
 
         #[cfg(unix)]
         {
@@ -491,14 +477,15 @@ mod tests {
     #[test]
     fn save_private_key_overwrites_existing() {
         let slug = &format!("save-overwrite-{}", std::process::id());
-        let key1 = SecretString::new("AGE-SECRET-KEY-FIRSTAAA".to_string().into());
-        let key2 = SecretString::new("AGE-SECRET-KEY-SECONDBBB".to_string().into());
+        let engine = AgeCrateEngine::new();
+        let (key1, _) = engine.keygen().unwrap();
+        let (key2, _) = engine.keygen().unwrap();
         let path1 = save_private_key(slug, &key1).unwrap();
         let path2 = save_private_key(slug, &key2).unwrap();
         assert_eq!(path1, path2);
         assert_eq!(
             fs::read_to_string(&path2).unwrap().trim(),
-            "AGE-SECRET-KEY-SECONDBBB"
+            key2.to_string().expose_secret()
         );
         let _ = fs::remove_file(&path2);
     }

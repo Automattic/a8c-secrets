@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::crypto::PublicKey;
+
 pub mod import;
 pub mod rotate;
 pub mod show;
@@ -13,20 +15,19 @@ pub(crate) const PUBLIC_KEY_LIST_LEGEND: &str =
 /// Used for `keys show` output and as the `inquire::Select` option type for `keys rotate`.
 #[derive(Clone)]
 pub(crate) struct PublicKeyListRow {
-    pub(crate) key: String,
+    pub(crate) key: PublicKey,
     pub(crate) matches_local_private_key: bool,
 }
 
 impl PublicKeyListRow {
     pub(crate) fn new(
-        recipient: impl Into<String>,
-        public_key_from_local_private_key: Option<&str>,
+        recipient: PublicKey,
+        public_key_from_local_private: Option<&PublicKey>,
     ) -> Self {
-        let key = recipient.into();
         let matches_local_private_key =
-            public_key_from_local_private_key.is_some_and(|pub_key| pub_key == key.as_str());
+            public_key_from_local_private.is_some_and(|pub_key| pub_key == &recipient);
         Self {
-            key,
+            key: recipient,
             matches_local_private_key,
         }
     }

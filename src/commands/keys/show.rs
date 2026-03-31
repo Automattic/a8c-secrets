@@ -1,8 +1,8 @@
 use anyhow::Result;
 
-use super::{PUBLIC_KEY_LIST_LEGEND, PublicKeyListRow};
+use super::{PublicKeyListRow, PUBLIC_KEY_LIST_LEGEND};
 use crate::config;
-use crate::crypto::derive_public_key;
+use crate::crypto::PrivateKey;
 use crate::keys;
 
 /// Display local/private key status and repository public keys.
@@ -31,7 +31,7 @@ pub fn run() -> Result<()> {
     };
 
     // Derive public key from private key
-    let derived_public = private_key.as_ref().and_then(|k| derive_public_key(k).ok());
+    let derived_public = private_key.as_ref().map(PrivateKey::to_public);
 
     if let Some(ref pub_key) = derived_public {
         println!("Public key:  {pub_key}");
@@ -48,7 +48,10 @@ pub fn run() -> Result<()> {
     for recipient in public_keys {
         println!(
             "{}",
-            PublicKeyListRow::new(recipient, derived_public.as_deref())
+            PublicKeyListRow::new(
+                recipient,
+                derived_public.as_ref(),
+            )
         );
     }
 

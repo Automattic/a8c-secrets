@@ -116,8 +116,10 @@ pub fn save_private_key(repo_slug: &str, private_key: &PrivateKey) -> Result<Pat
         })?;
     }
 
-    let private_key_string = private_key.to_string();
-    let line = Zeroizing::new(format!("{}\n", private_key_string.expose_secret()));
+    let line = {
+        let private_key_string = private_key.to_string();
+        Zeroizing::new(format!("{}\n", private_key_string.expose_secret()))
+    };
     config::atomic_write(&key_path, line.as_bytes())
         .with_context(|| format!("Failed to write private key to {}", key_path.display()))?;
 

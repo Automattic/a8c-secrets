@@ -239,16 +239,18 @@ pub fn replace_recipient_public_key_in_keys_pub(
     let mut out_lines: Vec<String> = Vec::new();
     let mut replace_count = 0usize;
 
-    for line in content.lines() {
+    for (idx, line) in content.lines().enumerate() {
         let trimmed = line.trim();
         if trimmed.is_empty() || trimmed.starts_with('#') {
             out_lines.push(line.to_string());
             continue;
         }
+        let line_no = idx + 1;
         trimmed.parse::<Recipient>().map_err(|parse_err| {
             anyhow::anyhow!(
-                "Invalid recipient public key in {}: {:?}: {parse_err}",
+                "Invalid recipient public key in {} on line {}: {:?}: {parse_err}",
                 path.display(),
+                line_no,
                 trimmed
             )
         })?;

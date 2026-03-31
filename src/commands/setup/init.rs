@@ -5,11 +5,11 @@ use anyhow::{Context, Result};
 use zeroize::Zeroizing;
 
 use crate::config::{self, REPO_SECRETS_DIR};
-use crate::crypto::CryptoEngine;
+use crate::crypto::{CryptoEngine, PrivateKey};
 use crate::keys;
 use crate::permissions;
 
-fn print_private_key_block(title: &str, key: &age::x25519::Identity) -> Result<()> {
+fn print_private_key_block(title: &str, key: &PrivateKey) -> Result<()> {
     let key_text = Zeroizing::new(format!("{}\n", key.to_string().expose_secret()));
     let mut out = io::stdout().lock();
     writeln!(out, "--- {title} ---")?;

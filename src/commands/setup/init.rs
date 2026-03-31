@@ -89,10 +89,10 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     println!("  {}  (dev private key)", key_path.display());
     println!();
     println!("--- Dev private key ---");
-    println!("{}", dev_private.expose_secret());
+    println!("{}", dev_private.to_string().expose_secret());
     println!();
     println!("--- CI private key ---");
-    println!("{}", ci_private.expose_secret());
+    println!("{}", ci_private.to_string().expose_secret());
     println!();
     println!("Next steps:");
     println!("  1. Add the dev private key to Secret Store:");

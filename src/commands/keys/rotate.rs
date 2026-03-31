@@ -1,12 +1,12 @@
 use std::path::Path;
 
-use age::secrecy::{ExposeSecret, SecretString};
+use age::secrecy::ExposeSecret;
 use anyhow::{Context, Result};
 use inquire::{Confirm, InquireError, Select};
 
 use super::{PUBLIC_KEY_LIST_LEGEND, PublicKeyListRow};
 use crate::config::{self, REPO_SECRETS_DIR};
-use crate::crypto::{CryptoEngine, derive_public_key};
+use crate::crypto::{CryptoEngine, PrivateKey, PublicKey};
 use crate::keys;
 
 fn inquire_to_anyhow<T>(result: inquire::error::InquireResult<T>) -> Result<T> {
@@ -20,8 +20,8 @@ fn inquire_to_anyhow<T>(result: inquire::error::InquireResult<T>) -> Result<T> {
 }
 
 fn select_public_key_to_rotate(
-    public_keys: &[String],
-    public_key_from_decrypt_private_key: &str,
+    public_keys: &[PublicKey],
+    public_key_from_decrypt_private_key: &PublicKey,
 ) -> Result<PublicKeyListRow> {
     let choices: Vec<PublicKeyListRow> = public_keys
         .iter()
@@ -147,11 +147,11 @@ pub(crate) fn apply_key_rotation(
     crypto_engine: &dyn CryptoEngine,
     repo_root: &Path,
     slug: &str,
-    old_public_key: &str,
-    private_key_for_decrypt: &SecretString,
+    old_public_key: &PublicKey,
+    private_key_for_decrypt: &PrivateKey,
 ) -> Result<()> {
-    let public_key_from_decrypt_private_key = derive_public_key(private_key_for_decrypt)?;
-    let rotating_owned = old_public_key == public_key_from_decrypt_private_key;
+    let public_key_from_decrypt_private_key = private_key_for_decrypt.to_public();
+    let rotating_owned = old_public_key == &public_key_from_decrypt_private_key;
 
     let (new_private_key, new_public_key) = crypto_engine.keygen()?;
 
@@ -184,7 +184,7 @@ pub(crate) fn apply_key_rotation(
     println!("Rotated the selected public key.");
     println!();
     println!("--- New private key ---");
-    println!("{}", new_private_key.expose_secret());
+    println!("{}", new_private_key.to_string().expose_secret());
     println!();
 
     println!("NOTE: This does not rotate the actual secret values inside the encrypted files.");
@@ -204,7 +204,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     let slug = &repo_config.repo;
 
     let private_key_for_decrypt = keys::get_private_key(slug)?;
-    let public_key_from_decrypt_private_key = derive_public_key(&private_key_for_decrypt)?;
+    let public_key_from_decrypt_private_key = private_key_for_decrypt.to_public();
     let public_keys = keys::load_public_keys(&repo_root)?;
 
     if !public_keys.contains(&public_key_from_decrypt_private_key) {
@@ -243,7 +243,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
         crypto_engine,
         &repo_root,
         slug,
-        selection.key.as_str(),
+        &selection.key,
         &private_key_for_decrypt,
     )
 }
@@ -254,11 +254,11 @@ mod tests {
     use std::io::{Read, Write};
     use std::sync::Mutex;
 
-    use age::secrecy::{ExposeSecret, SecretString};
+    use age::secrecy::ExposeSecret;
 
     use super::apply_key_rotation;
     use crate::config::REPO_SECRETS_DIR;
-    use crate::crypto::AgeCrateEngine;
+    use crate::crypto::{AgeCrateEngine, PublicKey};
 
     static A8C_SECRETS_HOME_TEST_LOCK: Mutex<()> = Mutex::new(());
 
@@ -290,9 +290,7 @@ mod tests {
         }
     }
 
-    fn encrypt_for_recipients(recipients: &[String], plaintext: &[u8]) -> Vec<u8> {
-        let recipients: Vec<age::x25519::Recipient> =
-            recipients.iter().map(|r| r.parse().unwrap()).collect();
+    fn encrypt_for_recipients(recipients: &[PublicKey], plaintext: &[u8]) -> Vec<u8> {
         let encryptor =
             age::Encryptor::with_recipients(recipients.iter().map(|r| r as &dyn age::Recipient))
                 .expect("non-empty recipients");
@@ -362,20 +360,22 @@ mod tests {
         fs::write(&key_path, format!("{old_dev_private}\n")).unwrap();
 
         let plaintext = b"rotate-me";
-        let ciphertext =
-            encrypt_for_recipients(&[old_dev_public.clone(), ci_public.clone()], plaintext);
+        let ciphertext = encrypt_for_recipients(
+            &[old_dev_identity.to_public(), ci_identity.to_public()],
+            plaintext,
+        );
         let age_path = repo_dir.path().join(".a8c-secrets/secret.txt.age");
         fs::write(&age_path, ciphertext).unwrap();
 
         let engine = AgeCrateEngine::new();
-        let private_key_for_decrypt = SecretString::new(old_dev_private.clone().into());
+        let old_dev_public_key = old_dev_identity.to_public();
 
         apply_key_rotation(
             &engine,
             repo_dir.path(),
             slug,
-            old_dev_public.as_str(),
-            &private_key_for_decrypt,
+            &old_dev_public_key,
+            &old_dev_identity,
         )
         .expect("apply_key_rotation");
 
@@ -440,8 +440,10 @@ mod tests {
         fs::write(&key_path, format!("{old_dev_private}\n")).unwrap();
 
         let plaintext = b"rotate-me";
-        let ciphertext =
-            encrypt_for_recipients(&[old_dev_public.clone(), ci_public.clone()], plaintext);
+        let ciphertext = encrypt_for_recipients(
+            &[old_dev_identity.to_public(), ci_identity.to_public()],
+            plaintext,
+        );
         fs::write(
             repo_dir.path().join(".a8c-secrets/secret.txt.age"),
             ciphertext,
@@ -449,14 +451,14 @@ mod tests {
         .unwrap();
 
         let engine = AgeCrateEngine::new();
-        let private_key_for_decrypt = SecretString::new(old_dev_private.into());
+        let old_dev_public_key = old_dev_identity.to_public();
 
         apply_key_rotation(
             &engine,
             repo_dir.path(),
             slug,
-            old_dev_public.as_str(),
-            &private_key_for_decrypt,
+            &old_dev_public_key,
+            &old_dev_identity,
         )
         .unwrap();
 

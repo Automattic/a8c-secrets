@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use anyhow::Result;
 
 use crate::config::{self, REPO_SECRETS_DIR};
-use crate::crypto::{CryptoEngine, derive_public_key};
+use crate::crypto::CryptoEngine;
 use crate::keys;
 use zeroize::Zeroizing;
 
@@ -46,20 +46,16 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
 
     let private_key = if let Ok(key) = keys::get_private_key(slug) {
         match &public_keys_result {
-            Ok(public_keys) => match derive_public_key(&key) {
-                Ok(derived) => {
-                    if public_keys.contains(&derived) {
-                        println!("Private key:  configured (matches a key in keys.pub)");
-                    } else {
-                        println!(
-                            "Private key:  configured (WARNING: does not match any key in keys.pub)"
-                        );
-                    }
+            Ok(public_keys) => {
+                let derived = key.to_public();
+                if public_keys.contains(&derived) {
+                    println!("Private key:  configured (matches a key in keys.pub)");
+                } else {
+                    println!(
+                        "Private key:  configured (WARNING: does not match any key in keys.pub)"
+                    );
                 }
-                Err(_) => {
-                    println!("Private key:  configured (WARNING: could not derive public key)");
-                }
-            },
+            }
             Err(_) => {
                 println!(
                     "Private key:  configured (cannot compare to keys.pub — see Public keys line above)"

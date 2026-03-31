@@ -37,24 +37,17 @@ pub fn run() -> Result<()> {
 
     println!();
 
-    // Read keys.pub with comments for labels
     let keys_pub_path = repo_root.join(REPO_SECRETS_DIR).join("keys.pub");
-    let content = std::fs::read_to_string(&keys_pub_path)?;
+    let entries = config::load_keys_pub_entries(&repo_root)?;
 
     println!("Public keys ({}):", keys_pub_path.display());
-    let mut current_label: Option<String> = None;
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with('#') {
-            current_label = Some(trimmed.trim_start_matches('#').trim().to_string());
-        } else if !trimmed.is_empty() {
-            let label = current_label.take().unwrap_or_default();
-            let marker = match &derived_public {
-                Some(derived) if derived == trimmed => " <-- your key",
-                _ => "",
-            };
-            println!("  {trimmed}  ({label}){marker}");
-        }
+    for e in entries {
+        let label = e.label.unwrap_or_default();
+        let marker = match &derived_public {
+            Some(derived) if derived == &e.recipient => " <-- your key",
+            _ => "",
+        };
+        println!("  {}  ({label}){marker}", e.recipient);
     }
 
     Ok(())

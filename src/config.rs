@@ -1,4 +1,5 @@
 use age::secrecy::{ExposeSecret, SecretString};
+use age::x25519::Recipient;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::io::{self, BufRead, IsTerminal, Write};
@@ -326,25 +327,92 @@ pub fn prompt_and_import_private_key(slug: &str) -> Result<SecretString> {
     Ok(key)
 }
 
-/// Read public keys from `.a8c-secrets/keys.pub`, filtering out comment lines and blanks.
+/// One recipient line from `.a8c-secrets/keys.pub` after parsing.
+///
+/// Human-oriented `#` lines immediately before a recipient apply as [`label`][Self::label]
+/// only to that recipient (the last `#` line wins if several precede one key). This matches
+/// `keys show` display and does not affect cryptographic identity (matching uses the recipient
+/// string only).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeysPubEntry {
+    /// 1-based line number of this recipient row in `keys.pub`.
+    pub line_number: usize,
+    /// Text after `#` on the most recent preceding comment-only line, if any.
+    pub label: Option<String>,
+    /// age X25519 recipient string (`age1…`).
+    pub recipient: String,
+}
+
+/// Parse `keys.pub` body: blank lines ignored; lines starting with `#` set the label for the
+/// next recipient; other non-empty lines are recipients (trimmed).
+pub fn parse_keys_pub(content: &str) -> Vec<KeysPubEntry> {
+    let mut pending_label: Option<String> = None;
+    let mut out = Vec::new();
+    for (idx, line) in content.lines().enumerate() {
+        let line_number = idx + 1;
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_prefix('#') {
+            pending_label = Some(rest.trim().to_string());
+        } else {
+            out.push(KeysPubEntry {
+                line_number,
+                label: pending_label.take(),
+                recipient: trimmed.to_string(),
+            });
+        }
+    }
+    out
+}
+
+fn validate_keys_pub_entries(path: &Path, entries: &[KeysPubEntry]) -> Result<()> {
+    for e in entries {
+        e.recipient.parse::<Recipient>().map_err(|parse_err| {
+            anyhow::anyhow!(
+                "Invalid recipient public key in {} at line {}: {:?}: {parse_err}",
+                path.display(),
+                e.line_number,
+                e.recipient
+            )
+        })?;
+    }
+    Ok(())
+}
+
+/// Load and validate `.a8c-secrets/keys.pub` entries (labels + age recipients).
 ///
 /// # Errors
 ///
-/// Returns an error if `keys.pub` cannot be read or contains no usable keys.
-pub fn load_public_keys(repo_root: &Path) -> Result<Vec<String>> {
+/// Returns an error if the file cannot be read, there are no recipient lines, or any
+/// recipient is not a valid age X25519 public key.
+pub fn load_keys_pub_entries(repo_root: &Path) -> Result<Vec<KeysPubEntry>> {
     let path = repo_root.join(REPO_SECRETS_DIR).join("keys.pub");
     let content = std::fs::read_to_string(&path)
         .with_context(|| format!("Failed to read {}", path.display()))?;
-    let keys: Vec<String> = content
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty() && !line.starts_with('#'))
-        .map(String::from)
-        .collect();
-    if keys.is_empty() {
+    let entries = parse_keys_pub(&content);
+    if entries.is_empty() {
         anyhow::bail!("No public keys found in {}", path.display());
     }
-    Ok(keys)
+    validate_keys_pub_entries(&path, &entries)?;
+    Ok(entries)
+}
+
+/// Read public keys from `.a8c-secrets/keys.pub`, filtering out comment lines and blanks.
+///
+/// Uses the same parsing rules as [`parse_keys_pub`] and [`load_keys_pub_entries`]. Each
+/// recipient must be a valid age X25519 public key.
+///
+/// # Errors
+///
+/// Returns an error if `keys.pub` cannot be read, contains no usable keys, or any key line
+/// is not a valid recipient.
+pub fn load_public_keys(repo_root: &Path) -> Result<Vec<String>> {
+    Ok(load_keys_pub_entries(repo_root)?
+        .into_iter()
+        .map(|e| e.recipient)
+        .collect())
 }
 
 /// List `.age` file stems in `.a8c-secrets/` (e.g. "google-services.json" from "google-services.json.age").
@@ -471,6 +539,8 @@ pub fn slug_from_git_remote() -> Option<String> {
 mod tests {
     use super::*;
     use std::fs;
+
+    use crate::crypto::{AgeCrateEngine, CryptoEngine};
 
     // -- slug_from_url --
 
@@ -631,21 +701,65 @@ mod tests {
         );
     }
 
-    // -- load_public_keys --
+    // -- load_public_keys / parse_keys_pub --
+
+    #[test]
+    fn parse_keys_pub_associates_last_comment_before_key_as_label() {
+        let got = parse_keys_pub("# dev\n# note\nPK1\n\n# ci\nPK2\n");
+        assert_eq!(got.len(), 2);
+        assert_eq!(got[0].line_number, 3);
+        assert_eq!(got[0].label.as_deref(), Some("note"));
+        assert_eq!(got[0].recipient, "PK1");
+        assert_eq!(got[1].line_number, 6);
+        assert_eq!(got[1].label.as_deref(), Some("ci"));
+        assert_eq!(got[1].recipient, "PK2");
+    }
+
+    #[test]
+    fn parse_keys_pub_skips_blank_lines() {
+        let got = parse_keys_pub("\n  \n# a\nk1\n");
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].recipient, "k1");
+        assert_eq!(got[0].label.as_deref(), Some("a"));
+    }
 
     #[test]
     fn load_public_keys_filters_comments_and_blanks() {
         let dir = tempfile::tempdir().unwrap();
         let secrets = dir.path().join(REPO_SECRETS_DIR);
         fs::create_dir_all(&secrets).unwrap();
+        let engine = AgeCrateEngine::new();
+        let (_, pub1) = engine.keygen().unwrap();
+        let (_, pub2) = engine.keygen().unwrap();
         fs::write(
             secrets.join("keys.pub"),
-            "# dev\nage1abc\n\n# ci\nage1xyz\n\n",
+            format!("# dev\n{pub1}\n\n# ci\n{pub2}\n"),
         )
         .unwrap();
 
         let keys = load_public_keys(dir.path()).unwrap();
-        assert_eq!(keys, vec!["age1abc", "age1xyz"]);
+        assert_eq!(keys, vec![pub1, pub2]);
+    }
+
+    #[test]
+    fn load_public_keys_rejects_invalid_recipient() {
+        let dir = tempfile::tempdir().unwrap();
+        let secrets = dir.path().join(REPO_SECRETS_DIR);
+        fs::create_dir_all(&secrets).unwrap();
+        let engine = AgeCrateEngine::new();
+        let (_, pub1) = engine.keygen().unwrap();
+        fs::write(
+            secrets.join("keys.pub"),
+            format!("# dev\n{pub1}\n# ci\nnot-a-valid-age-recipient\n"),
+        )
+        .unwrap();
+
+        let err = load_public_keys(dir.path()).expect_err("invalid recipient should error");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("line") && msg.contains("not-a-valid-age-recipient"),
+            "unexpected error: {msg}"
+        );
     }
 
     #[test]

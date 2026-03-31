@@ -84,14 +84,16 @@ NOTES:
         long_about = "\
 Open a secret file in your editor for modification.
 
-Opens ~/.a8c-secrets/<repo>/<file> in $EDITOR (default: vi). Compares file
-content before and after the editor session — only encrypts if changed.
+Opens ~/.a8c-secrets/<repo>/<file> in $EDITOR (default: vi). The value is parsed
+like shell words (program plus optional arguments; quote paths that contain spaces).
+Compares file content before and after the editor session — only encrypts if changed.
 If the file doesn't exist, prompts to create it.",
         after_long_help = "\
 EXAMPLES:
   a8c-secrets edit google-services.json   # Edit an existing secret
   a8c-secrets edit new-config.yml         # Create and edit a new secret
-  EDITOR=code a8c-secrets edit api.json   # Use VS Code as editor"
+  EDITOR=code a8c-secrets edit api.json   # Use VS Code as editor
+  EDITOR='code --wait' a8c-secrets edit api.json   # VS Code with flags (shell word splitting)"
     )]
     Edit(EditArgs),
 

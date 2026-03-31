@@ -1,4 +1,5 @@
 use std::io::{self, Write};
+use std::path::Path;
 
 use anyhow::{Context, Result};
 
@@ -15,6 +16,18 @@ fn default_editor() -> String {
     } else {
         "vi".to_string()
     }
+}
+
+/// Build a process command from an `EDITOR`-style string: executable plus optional arguments,
+/// parsed like POSIX shell words (so `code --wait` or `"Path With Spaces/editor"` work).
+fn command_for_editor(editor: &str, file: &Path) -> Result<std::process::Command> {
+    let words = shell_words::split(editor).map_err(|e| anyhow::anyhow!("Invalid EDITOR: {e}"))?;
+    let (program, args) = words
+        .split_first()
+        .ok_or_else(|| anyhow::anyhow!("EDITOR is empty"))?;
+    let mut cmd = std::process::Command::new(program);
+    cmd.args(args).arg(file);
+    Ok(cmd)
 }
 
 /// Open a local secret file in an editor and re-encrypt if it changed.
@@ -55,12 +68,15 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
 
     let before = Zeroizing::new(std::fs::read(&local_path)?);
 
-    // Open in $EDITOR
-    let editor = std::env::var("EDITOR").unwrap_or_else(|_| default_editor());
-    let status = std::process::Command::new(&editor)
-        .arg(&local_path)
+    // Open in $EDITOR (split into program + args; see `command_for_editor`)
+    let editor_spec = std::env::var("EDITOR")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(default_editor);
+    let status = command_for_editor(&editor_spec, &local_path)?
         .status()
-        .with_context(|| format!("Failed to launch editor: {editor}"))?;
+        .with_context(|| format!("Failed to launch editor: {editor_spec}"))?;
 
     if !status.success() {
         anyhow::bail!("Editor exited with non-zero status");
@@ -118,5 +134,21 @@ mod tests {
         } else {
             assert_eq!(default_editor(), "vi");
         }
+    }
+
+    #[test]
+    fn editor_spec_splits_program_and_flags() {
+        assert_eq!(
+            shell_words::split("code --wait").unwrap(),
+            vec!["code".to_string(), "--wait".to_string()]
+        );
+    }
+
+    #[test]
+    fn editor_spec_respects_quotes_for_paths_with_spaces() {
+        assert_eq!(
+            shell_words::split(r#""/tmp/My Editor/bin/edit" -w"#).unwrap(),
+            vec!["/tmp/My Editor/bin/edit".to_string(), "-w".to_string()]
+        );
     }
 }

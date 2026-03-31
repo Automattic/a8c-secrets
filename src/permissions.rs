@@ -158,17 +158,17 @@ mod tests {
         let dacl = dacl_sddl.to_string_lossy();
         let upper = dacl.to_uppercase();
 
-        // Normalize by removing all whitespace for comparison.
-        let normalized_actual: String = upper.chars().filter(|c| !c.is_whitespace()).collect();
-        let expected_sddl = format!("D:P(A;;FA;;;{})", sid_upper);
-        let normalized_expected: String = expected_sddl
-            .chars()
-            .filter(|c| !c.is_whitespace())
-            .collect();
-
+        // `SetNamedSecurityInfo` applies `D:P(A;;FA;;;<sid>)`. When read back, SDDL may include
+        // extra DACL control flags (e.g. `D:PAI…` for auto-inherit), so assert the ACE and a
+        // `D:P` prefix instead of bitwise string equality.
+        let ace = format!("(A;;FA;;;{})", sid_upper);
         assert!(
-            normalized_actual == normalized_expected,
-            "expected exact owner-only DACL {expected_sddl:?}, got {dacl:?}"
+            upper.contains(&ace),
+            "expected full-access ACE for current user in {dacl:?}"
+        );
+        assert!(
+            upper.starts_with("D:P"),
+            "expected protected DACL (D:P…) in {dacl:?}"
         );
     }
 

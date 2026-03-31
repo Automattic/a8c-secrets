@@ -179,7 +179,8 @@ pub fn validate_repo_slug(slug: &str) -> Result<()> {
 /// # Errors
 ///
 /// Returns an error if the secrets directory exists but cannot be read, or if
-/// an `.age` entry has an invalid stem.
+/// an `.age` file has an invalid stem. Non-file `.age` entries are skipped with
+/// a warning.
 pub fn list_age_files(repo_root: &Path) -> Result<Vec<String>> {
     let dir = repo_root.join(REPO_SECRETS_DIR);
     let mut names = Vec::new();
@@ -195,6 +196,13 @@ pub fn list_age_files(repo_root: &Path) -> Result<Vec<String>> {
             continue;
         };
         if let Some(stem) = name.strip_suffix(".age") {
+            if !entry.file_type()?.is_file() {
+                eprintln!(
+                    "Warning: skipping non-file .age entry in {}: {name}",
+                    dir.display()
+                );
+                continue;
+            }
             validate_secret_basename(stem).with_context(|| {
                 format!("Invalid secret name in {REPO_SECRETS_DIR}/{name} (stem must be a flat basename)")
             })?;
@@ -446,6 +454,7 @@ mod tests {
         fs::write(secrets.join("z-config.json.age"), b"data").unwrap();
         fs::write(secrets.join("a-keys.yml.age"), b"data").unwrap();
         fs::write(secrets.join("config.toml"), b"not an age file").unwrap();
+        fs::create_dir_all(secrets.join("nested.age")).unwrap();
 
         let files = list_age_files(dir.path()).unwrap();
         assert_eq!(files, vec!["a-keys.yml", "z-config.json"]);

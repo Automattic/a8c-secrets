@@ -1,8 +1,8 @@
 use std::path::Path;
 
-use age::secrecy::ExposeSecret;
 use anyhow::{Context, Result};
 use inquire::{Confirm, InquireError, Select};
+use std::io::IsTerminal;
 
 use super::{PUBLIC_KEY_LIST_LEGEND, PublicKeyListRow};
 use crate::config::{self, REPO_SECRETS_DIR};
@@ -183,9 +183,7 @@ pub(crate) fn apply_key_rotation(
     println!();
     println!("Rotated the selected public key.");
     println!();
-    println!("--- New private key ---");
-    println!("{}", new_private_key.to_string().expose_secret());
-    println!();
+    keys::print_private_key_to_stdout("New private key", &new_private_key)?;
 
     println!("NOTE: This does not rotate the actual secret values inside the encrypted files.");
 
@@ -199,6 +197,12 @@ pub(crate) fn apply_key_rotation(
 /// Returns an error if repo/config/key discovery fails, the user aborts, or
 /// re-encryption reads/writes fail.
 pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
+    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+        anyhow::bail!(
+            "`a8c-secrets keys rotate` must run in an interactive terminal (TTY) because it prints a private key to stdout."
+        );
+    }
+
     let repo_root = config::find_repo_root()?;
     let repo_config = config::load_repo_config(&repo_root)?;
     let slug = &repo_config.repo;
@@ -256,7 +260,7 @@ mod tests {
 
     use super::apply_key_rotation;
     use crate::config::REPO_SECRETS_DIR;
-    use crate::crypto::{AgeCrateEngine, PublicKey};
+    use crate::crypto::{AgeCrateEngine, PrivateKey, PublicKey};
     use serial_test::serial;
 
     fn encrypt_for_recipients(recipients: &[PublicKey], plaintext: &[u8]) -> Vec<u8> {
@@ -270,12 +274,12 @@ mod tests {
         encrypted
     }
 
-    fn decrypt_with_private(ciphertext: &[u8], private_key: &str) -> anyhow::Result<Vec<u8>> {
-        let identity: age::x25519::Identity = private_key
-            .parse()
-            .map_err(|e| anyhow::anyhow!("invalid private key: {e}"))?;
+    fn decrypt_with_private(
+        ciphertext: &[u8],
+        private_key: &PrivateKey,
+    ) -> anyhow::Result<Vec<u8>> {
         let decryptor = age::Decryptor::new(ciphertext)?;
-        let mut reader = decryptor.decrypt(std::iter::once(&identity as &dyn age::Identity))?;
+        let mut reader = decryptor.decrypt(std::iter::once(private_key as &dyn age::Identity))?;
         let mut out = vec![];
         reader.read_to_end(&mut out)?;
         Ok(out)
@@ -314,14 +318,17 @@ mod tests {
 
             let old_dev_identity = age::x25519::Identity::generate();
             let ci_identity = age::x25519::Identity::generate();
-            let old_dev_private = old_dev_identity.to_string().expose_secret().to_string();
             let old_dev_public = old_dev_identity.to_public().to_string();
             let ci_public = ci_identity.to_public().to_string();
             write_keys_pub(repo_dir.path(), &old_dev_public, &ci_public);
 
             let key_path = secrets_home.join("keys").join(format!("{slug}.key"));
             fs::create_dir_all(key_path.parent().unwrap()).unwrap();
-            fs::write(&key_path, format!("{old_dev_private}\n")).unwrap();
+            fs::write(
+                &key_path,
+                format!("{}\n", old_dev_identity.to_string().expose_secret()),
+            )
+            .unwrap();
 
             let plaintext = b"rotate-me";
             let ciphertext = encrypt_for_recipients(
@@ -353,8 +360,12 @@ mod tests {
                 "old dev key should have been replaced"
             );
 
-            let new_dev_private = fs::read_to_string(&key_path).unwrap().trim().to_string();
-            let new_identity: age::x25519::Identity = new_dev_private.parse().unwrap();
+            let new_dev_private: PrivateKey = fs::read_to_string(&key_path)
+                .unwrap()
+                .trim()
+                .parse()
+                .unwrap();
+            let new_identity = new_dev_private.clone();
             let new_dev_public = new_identity.to_public();
             assert!(
                 keys_pub.contains(&new_dev_public.to_string()),
@@ -367,7 +378,7 @@ mod tests {
                 plaintext
             );
             assert!(
-                decrypt_with_private(&new_ciphertext, &old_dev_private).is_err(),
+                decrypt_with_private(&new_ciphertext, &old_dev_identity).is_err(),
                 "old dev private key should no longer decrypt rotated file"
             );
         });
@@ -391,14 +402,17 @@ mod tests {
 
             let old_dev_identity = age::x25519::Identity::generate();
             let ci_identity = age::x25519::Identity::generate();
-            let old_dev_private = old_dev_identity.to_string().expose_secret().to_string();
             let old_dev_public = old_dev_identity.to_public().to_string();
             let ci_public = ci_identity.to_public().to_string();
             write_keys_pub(repo_dir.path(), &old_dev_public, &ci_public);
 
             let key_path = secrets_home.join("keys").join(format!("{slug}.key"));
             fs::create_dir_all(key_path.parent().unwrap()).unwrap();
-            fs::write(&key_path, format!("{old_dev_private}\n")).unwrap();
+            fs::write(
+                &key_path,
+                format!("{}\n", old_dev_identity.to_string().expose_secret()),
+            )
+            .unwrap();
 
             let plaintext = b"rotate-me";
             let ciphertext = encrypt_for_recipients(

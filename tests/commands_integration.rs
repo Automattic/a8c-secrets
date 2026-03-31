@@ -26,9 +26,7 @@ fn write_keys_pub(repo_dir: &Path, dev_public: &str, ci_public: &str) {
     .unwrap();
 }
 
-fn encrypt_for(recipients: &[String], plaintext: &[u8]) -> Vec<u8> {
-    let recipients: Vec<age::x25519::Recipient> =
-        recipients.iter().map(|r| r.parse().unwrap()).collect();
+fn encrypt_for(recipients: &[age::x25519::Recipient], plaintext: &[u8]) -> Vec<u8> {
     let encryptor =
         age::Encryptor::with_recipients(recipients.iter().map(|r| r as &dyn age::Recipient))
             .expect("non-empty recipients");
@@ -105,7 +103,10 @@ fn decrypt_non_interactive_fails_when_no_key_configured() {
     write_keys_pub(&repo_dir, &dev_public, &ci_public);
 
     let plaintext = b"secret-data";
-    let ciphertext = encrypt_for(&[dev_public, ci_public], plaintext);
+    let ciphertext = encrypt_for(
+        &[dev_identity.to_public(), ci_identity.to_public()],
+        plaintext,
+    );
     fs::write(repo_dir.join(".a8c-secrets/secret.json.age"), ciphertext).unwrap();
 
     configured_command(&repo_dir, &home_dir)
@@ -135,7 +136,10 @@ fn decrypt_non_interactive_writes_plaintext_to_local_home_dir() {
     write_keys_pub(&repo_dir, &dev_public, &ci_public);
 
     let plaintext = br#"{"token":"abc123"}"#;
-    let ciphertext = encrypt_for(&[dev_public.clone(), ci_public], plaintext);
+    let ciphertext = encrypt_for(
+        &[dev_identity.to_public(), ci_identity.to_public()],
+        plaintext,
+    );
     fs::write(repo_dir.join(".a8c-secrets/secret.json.age"), ciphertext).unwrap();
 
     configured_command(&repo_dir, &home_dir)
@@ -168,7 +172,10 @@ fn decrypt_non_interactive_fails_when_one_age_file_cannot_be_decrypted() {
     write_keys_pub(&repo_dir, &dev_public, &ci_public);
 
     let plaintext = br#"{"token":"abc123"}"#;
-    let ciphertext = encrypt_for(&[dev_public.clone(), ci_public], plaintext);
+    let ciphertext = encrypt_for(
+        &[dev_identity.to_public(), ci_identity.to_public()],
+        plaintext,
+    );
     fs::write(repo_dir.join(".a8c-secrets/secret.json.age"), ciphertext).unwrap();
     fs::write(
         repo_dir.join(".a8c-secrets/corrupt.age"),
@@ -219,7 +226,10 @@ fn encrypt_skips_rewrite_when_plaintext_is_unchanged() {
     write_keys_pub(&repo_dir, &dev_public, &ci_public);
 
     let plaintext = b"same-value";
-    let ciphertext = encrypt_for(&[dev_public.clone(), ci_public], plaintext);
+    let ciphertext = encrypt_for(
+        &[dev_identity.to_public(), ci_identity.to_public()],
+        plaintext,
+    );
     let age_path = repo_dir.join(".a8c-secrets/config.json.age");
     fs::write(&age_path, &ciphertext).unwrap();
 
@@ -342,7 +352,10 @@ fn status_succeeds_for_configured_repo() {
     write_keys_pub(&repo_dir, &dev_public, &ci_public);
 
     let plaintext = b"x";
-    let ciphertext = encrypt_for(&[dev_public, ci_public], plaintext);
+    let ciphertext = encrypt_for(
+        &[dev_identity.to_public(), ci_identity.to_public()],
+        plaintext,
+    );
     fs::write(repo_dir.join(".a8c-secrets/a.txt.age"), ciphertext).unwrap();
 
     let assert = configured_command(&repo_dir, &home_dir)
@@ -445,7 +458,7 @@ fn encrypt_new_plaintext_then_decrypt_roundtrip() {
 }
 
 #[test]
-fn setup_init_with_git_remote_then_encrypt_decrypt_roundtrip() {
+fn setup_init_requires_interactive_tty() {
     let temp = tempfile::tempdir().unwrap();
     let repo_dir = temp.path().join("repo");
     let home_dir = temp.path().join("home");
@@ -468,33 +481,57 @@ fn setup_init_with_git_remote_then_encrypt_decrypt_roundtrip() {
         writeln!(stdin).unwrap();
     }
 
-    let status = child.wait().expect("wait on setup init");
+    let out = child
+        .wait_with_output()
+        .expect("wait_with_output on setup init");
     assert!(
-        status.success(),
-        "setup init should succeed (requires git on PATH)"
+        !out.status.success(),
+        "setup init should fail when stdin/stdout are not TTYs"
     );
+    let combined =
+        String::from_utf8_lossy(&out.stderr).to_string() + &String::from_utf8_lossy(&out.stdout);
+    assert!(
+        combined.contains("interactive terminal (TTY)"),
+        "expected TTY requirement message, got: {combined}"
+    );
+    assert!(
+        !repo_dir.join(".a8c-secrets/config.toml").exists(),
+        "setup init should fail before writing config in non-TTY mode"
+    );
+}
 
-    let slug = "demo";
-    assert!(repo_dir.join(".a8c-secrets/config.toml").exists());
+#[test]
+fn keys_rotate_requires_interactive_tty() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_dir = temp.path().join("repo");
+    fs::create_dir_all(&repo_dir).unwrap();
 
-    let plaintext = b"e2e-from-init";
-    let local_dir = secrets_home(&home_dir).join(slug);
-    fs::create_dir_all(&local_dir).unwrap();
-    fs::write(local_dir.join("note.txt"), plaintext).unwrap();
+    let mut child = std::process::Command::new(cargo_bin_exe())
+        .current_dir(&repo_dir)
+        .args(["keys", "rotate"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn keys rotate");
 
-    configured_command(&repo_dir, &home_dir)
-        .args(["encrypt", "note.txt"])
-        .assert()
-        .success();
+    if let Some(mut stdin) = child.stdin.take() {
+        writeln!(stdin).unwrap();
+    }
 
-    fs::remove_file(local_dir.join("note.txt")).unwrap();
-
-    configured_command(&repo_dir, &home_dir)
-        .args(["decrypt", "--non-interactive"])
-        .assert()
-        .success();
-
-    assert_eq!(fs::read(local_dir.join("note.txt")).unwrap(), plaintext);
+    let out = child
+        .wait_with_output()
+        .expect("wait_with_output on keys rotate");
+    assert!(
+        !out.status.success(),
+        "keys rotate should fail when stdin/stdout are not TTYs"
+    );
+    let combined =
+        String::from_utf8_lossy(&out.stderr).to_string() + &String::from_utf8_lossy(&out.stdout);
+    assert!(
+        combined.contains("interactive terminal (TTY)"),
+        "expected TTY requirement message, got: {combined}"
+    );
 }
 
 #[test]
@@ -651,7 +688,10 @@ fn decrypt_non_interactive_removes_orphan_local_files() {
     write_keys_pub(&repo_dir, &dev_public, &ci_public);
 
     let plaintext = br#"{"k":"v"}"#;
-    let ciphertext = encrypt_for(&[dev_public.clone(), ci_public], plaintext);
+    let ciphertext = encrypt_for(
+        &[dev_identity.to_public(), ci_identity.to_public()],
+        plaintext,
+    );
     fs::write(repo_dir.join(".a8c-secrets/secret.json.age"), ciphertext).unwrap();
 
     let local_dir = secrets_home(&home_dir).join(slug);
@@ -702,7 +742,10 @@ fn decrypt_non_interactive_accepts_identity_file_path() {
     write_keys_pub(&repo_dir, &dev_public, &ci_public);
 
     let plaintext = b"from-file-identity";
-    let ciphertext = encrypt_for(&[dev_public, ci_public], plaintext);
+    let ciphertext = encrypt_for(
+        &[dev_identity.to_public(), ci_identity.to_public()],
+        plaintext,
+    );
     fs::write(repo_dir.join(".a8c-secrets/x.age"), ciphertext).unwrap();
 
     let id_file = temp.path().join("identity.key");
@@ -738,7 +781,10 @@ fn encrypt_force_reencrypts_without_private_key() {
     write_keys_pub(&repo_dir, &dev_public, &ci_public);
 
     let plaintext = b"force-target";
-    let ciphertext = encrypt_for(&[dev_public.clone(), ci_public.clone()], plaintext);
+    let ciphertext = encrypt_for(
+        &[dev_identity.to_public(), ci_identity.to_public()],
+        plaintext,
+    );
     let age_path = repo_dir.join(".a8c-secrets/note.age");
     fs::write(&age_path, &ciphertext).unwrap();
 
@@ -785,7 +831,7 @@ fn encrypt_warns_when_existing_age_cannot_be_decrypted_for_comparison() {
 
     // Ciphertext only for CI — dev private key cannot decrypt (smart-compare Err branch).
     let plaintext = b"local-body";
-    let ciphertext_ci_only = encrypt_for(&[ci_public], plaintext);
+    let ciphertext_ci_only = encrypt_for(&[ci_identity.to_public()], plaintext);
     fs::write(
         repo_dir.join(".a8c-secrets/wrong_recipient.age"),
         ciphertext_ci_only,
@@ -841,15 +887,24 @@ fn status_shows_sync_modified_encrypted_only_and_local_only() {
     fs::create_dir_all(&local_dir).unwrap();
 
     let in_sync_plain = b"same";
-    let ct_in_sync = encrypt_for(&[dev_public.clone(), ci_public.clone()], in_sync_plain);
+    let ct_in_sync = encrypt_for(
+        &[dev_identity.to_public(), ci_identity.to_public()],
+        in_sync_plain,
+    );
     fs::write(repo_dir.join(".a8c-secrets/in_sync.txt.age"), ct_in_sync).unwrap();
     fs::write(local_dir.join("in_sync.txt"), in_sync_plain).unwrap();
 
-    let ct_mod = encrypt_for(&[dev_public.clone(), ci_public.clone()], b"age-plain");
+    let ct_mod = encrypt_for(
+        &[dev_identity.to_public(), ci_identity.to_public()],
+        b"age-plain",
+    );
     fs::write(repo_dir.join(".a8c-secrets/mod.txt.age"), ct_mod).unwrap();
     fs::write(local_dir.join("mod.txt"), b"local-plain-different").unwrap();
 
-    let ct_only = encrypt_for(&[dev_public.clone(), ci_public.clone()], b"only-age");
+    let ct_only = encrypt_for(
+        &[dev_identity.to_public(), ci_identity.to_public()],
+        b"only-age",
+    );
     fs::write(repo_dir.join(".a8c-secrets/only_age.txt.age"), ct_only).unwrap();
 
     fs::write(local_dir.join("only_local.txt"), b"no-age-counterpart").unwrap();
@@ -897,7 +952,11 @@ fn rm_removes_local_and_age_when_confirmed() {
     write_keys_pub(&repo_dir, &dev_public, &ci_public);
 
     let age_path = repo_dir.join(".a8c-secrets/gone.txt.age");
-    fs::write(&age_path, encrypt_for(&[dev_public, ci_public], b"x")).unwrap();
+    fs::write(
+        &age_path,
+        encrypt_for(&[dev_identity.to_public(), ci_identity.to_public()], b"x"),
+    )
+    .unwrap();
 
     let local_path = secrets_home(&home_dir).join(slug).join("gone.txt");
     fs::create_dir_all(local_path.parent().unwrap()).unwrap();

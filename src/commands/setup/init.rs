@@ -1,6 +1,5 @@
-use std::io::{self, Write};
+use std::io::{self, IsTerminal, Write};
 
-use age::secrecy::ExposeSecret;
 use anyhow::{Context, Result};
 
 use crate::config::{self, REPO_SECRETS_DIR};
@@ -15,6 +14,12 @@ use crate::permissions;
 /// Returns an error if initialization paths cannot be created, user input
 /// fails, key generation fails, or config/key files cannot be written.
 pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
+    if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
+        anyhow::bail!(
+            "`a8c-secrets setup init` must run in an interactive terminal (TTY) because it prints private keys to stdout."
+        );
+    }
+
     let cwd = std::env::current_dir().context("Failed to get current directory")?;
     let secrets_dir = cwd.join(REPO_SECRETS_DIR);
 
@@ -88,12 +93,8 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     println!("  {}  (public keys)", keys_pub_path.display());
     println!("  {}  (dev private key)", key_path.display());
     println!();
-    println!("--- Dev private key ---");
-    println!("{}", dev_private.to_string().expose_secret());
-    println!();
-    println!("--- CI private key ---");
-    println!("{}", ci_private.to_string().expose_secret());
-    println!();
+    keys::print_private_key_to_stdout("Dev private key", &dev_private)?;
+    keys::print_private_key_to_stdout("CI private key", &ci_private)?;
     println!("Next steps:");
     println!("  1. Add the dev private key to Secret Store:");
     println!(

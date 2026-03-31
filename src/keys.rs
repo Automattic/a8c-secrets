@@ -35,6 +35,11 @@ pub fn private_key_path(repo_slug: &str) -> Result<PathBuf> {
         .join(format!("{repo_slug}.key")))
 }
 
+/// Path to `.a8c-secrets/keys.pub` under the given git repository root.
+pub fn public_keys_path(repo_root: &Path) -> PathBuf {
+    repo_root.join(REPO_SECRETS_DIR).join("keys.pub")
+}
+
 /// Read the private key, checking `A8C_SECRETS_IDENTITY` env var first,
 /// then falling back to the key file on disk.
 ///
@@ -175,7 +180,7 @@ pub fn prompt_and_import_private_key(slug: &str) -> Result<SecretString> {
 /// Returns an error if `keys.pub` cannot be read, contains no usable keys, or any key line
 /// is not a valid recipient.
 pub fn load_public_keys(repo_root: &Path) -> Result<Vec<String>> {
-    let path = repo_root.join(REPO_SECRETS_DIR).join("keys.pub");
+    let path = public_keys_path(repo_root);
     let content = std::fs::read_to_string(&path)
         .with_context(|| format!("Failed to read {}", path.display()))?;
 
@@ -234,7 +239,7 @@ mod tests {
         let engine = AgeCrateEngine::new();
         let (_, pub1) = engine.keygen().unwrap();
         fs::write(
-            secrets.join("keys.pub"),
+            public_keys_path(dir.path()),
             format!("\n  \n# dev\n{pub1}\n# note\n"),
         )
         .unwrap();
@@ -250,7 +255,7 @@ mod tests {
         let (_, pub1) = engine.keygen().unwrap();
         let (_, pub2) = engine.keygen().unwrap();
         fs::write(
-            secrets.join("keys.pub"),
+            public_keys_path(dir.path()),
             format!("# dev\n{pub1}\n\n# ci\n{pub2}\n"),
         )
         .unwrap();
@@ -267,7 +272,7 @@ mod tests {
         let engine = AgeCrateEngine::new();
         let (_, pub1) = engine.keygen().unwrap();
         fs::write(
-            secrets.join("keys.pub"),
+            public_keys_path(dir.path()),
             format!("# dev\n{pub1}\n# ci\nnot-a-valid-age-recipient\n"),
         )
         .unwrap();
@@ -285,7 +290,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let secrets = dir.path().join(REPO_SECRETS_DIR);
         fs::create_dir_all(&secrets).unwrap();
-        fs::write(secrets.join("keys.pub"), "# only comments\n").unwrap();
+        fs::write(public_keys_path(dir.path()), "# only comments\n").unwrap();
 
         let result = load_public_keys(dir.path());
         assert!(result.is_err());

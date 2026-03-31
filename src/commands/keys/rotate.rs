@@ -62,7 +62,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &RotateArgs) -> Result<()> {
     };
 
     // Rewrite keys.pub (optional # dev / # ci lines for human readers)
-    let keys_pub_path = repo_root.join(REPO_SECRETS_DIR).join("keys.pub");
+    let keys_pub_path = keys::public_keys_path(&repo_root);
     std::fs::write(
         &keys_pub_path,
         format!("# dev\n{dev_key}\n# ci\n{ci_key}\n"),

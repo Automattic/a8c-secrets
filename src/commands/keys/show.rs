@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use crate::config::{self, REPO_SECRETS_DIR};
+use crate::config;
 use crate::crypto::derive_public_key;
 use crate::keys;
 
@@ -38,7 +38,7 @@ pub fn run() -> Result<()> {
 
     println!();
 
-    let keys_pub_path = repo_root.join(REPO_SECRETS_DIR).join("keys.pub");
+    let keys_pub_path = keys::public_keys_path(&repo_root);
     let public_keys = keys::load_public_keys(&repo_root)?;
 
     println!("Public keys ({}):", keys_pub_path.display());

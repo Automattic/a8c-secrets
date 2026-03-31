@@ -65,7 +65,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     std::fs::write(&config_path, toml::to_string_pretty(&config)?)?;
 
     // Write keys.pub
-    let keys_pub_path = secrets_dir.join("keys.pub");
+    let keys_pub_path = keys::public_keys_path(&cwd);
     std::fs::write(
         &keys_pub_path,
         format!("# dev\n{dev_public}\n# ci\n{ci_public}\n"),

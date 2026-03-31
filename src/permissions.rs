@@ -131,6 +131,42 @@ mod tests {
         assert_eq!(mode, 0o700);
     }
 
+    // Assert the DACL matches `set_windows_owner_only`: protected DACL with one ACE granting
+    // full access to the current user only (SDDL `D:P(A;;FA;;;<sid>)`).
+    #[cfg(windows)]
+    fn assert_owner_only_full_access_dacl(path: &std::path::Path) {
+        use windows_permissions::constants::{SeObjectType, SecurityInformation};
+        use windows_permissions::utilities;
+        use windows_permissions::wrappers::{
+            ConvertSecurityDescriptorToStringSecurityDescriptor, GetNamedSecurityInfo,
+        };
+
+        let sid = utilities::current_process_sid().expect("current_process_sid");
+        let sid_upper = sid.to_string().to_uppercase();
+
+        let sd = GetNamedSecurityInfo(
+            path.as_os_str(),
+            SeObjectType::SE_FILE_OBJECT,
+            SecurityInformation::Dacl | SecurityInformation::ProtectedDacl,
+        )
+        .expect("GetNamedSecurityInfo");
+
+        let dacl_sddl =
+            ConvertSecurityDescriptorToStringSecurityDescriptor(&sd, SecurityInformation::Dacl)
+                .expect("ConvertSecurityDescriptorToStringSecurityDescriptor");
+
+        let dacl = dacl_sddl.to_string_lossy();
+        let upper = dacl.to_uppercase();
+        assert!(
+            upper.contains("D:P"),
+            "expected protected DACL (D:P) in {dacl:?}"
+        );
+        assert!(
+            upper.contains("(A;;FA;;;") && upper.contains(&sid_upper),
+            "expected full-access ACE for current user SID in {dacl:?}"
+        );
+    }
+
     #[cfg(windows)]
     #[test]
     fn test_set_secure_file_permissions_windows() {
@@ -140,8 +176,8 @@ mod tests {
 
         set_secure_file_permissions(&file).unwrap();
 
-        // Verify file is still accessible
         assert_eq!(fs::read(&file).unwrap(), b"secret");
+        assert_owner_only_full_access_dacl(&file);
     }
 
     #[cfg(windows)]
@@ -153,7 +189,7 @@ mod tests {
 
         set_secure_dir_permissions(&sub).unwrap();
 
-        // Verify directory is still accessible
         assert!(sub.exists());
+        assert_owner_only_full_access_dacl(&sub);
     }
 }

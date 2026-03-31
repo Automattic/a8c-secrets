@@ -19,6 +19,9 @@ fn default_editor() -> String {
 
 /// Open a local secret file in an editor and re-encrypt if it changed.
 ///
+/// New files and post-edit content get the same owner-only file permissions as
+/// [`decrypt`](`crate::commands::decrypt`) (`0o600` on Unix, owner-only DACL on Windows).
+///
 /// # Errors
 ///
 /// Returns an error if repo/config discovery fails, file IO fails, launching
@@ -47,6 +50,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
             return Ok(());
         }
         std::fs::write(&local_path, "")?;
+        permissions::set_secure_file_permissions(&local_path)?;
     }
 
     let before = Zeroizing::new(std::fs::read(&local_path)?);
@@ -61,6 +65,9 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
     if !status.success() {
         anyhow::bail!("Editor exited with non-zero status");
     }
+
+    // Match `decrypt`: editors often leave world-readable files (umask); tighten after save.
+    permissions::set_secure_file_permissions(&local_path)?;
 
     // Hash after editing
     let after = Zeroizing::new(std::fs::read(&local_path)?);
@@ -86,6 +93,23 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::default_editor;
+    use crate::permissions;
+
+    #[cfg(unix)]
+    #[test]
+    fn empty_file_created_for_edit_has_secure_mode() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("new-secret.txt");
+        std::fs::write(&path, "").unwrap();
+        permissions::set_secure_file_permissions(&path).unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            mode, 0o600,
+            "new decrypted files should be owner-read/write only"
+        );
+    }
 
     #[test]
     fn default_editor_matches_platform() {

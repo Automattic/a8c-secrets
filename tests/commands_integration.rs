@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
 use std::fs;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
@@ -38,17 +38,6 @@ fn encrypt_for(recipients: &[String], plaintext: &[u8]) -> Vec<u8> {
     writer.write_all(plaintext).unwrap();
     writer.finish().unwrap();
     encrypted
-}
-
-fn decrypt_with_private(ciphertext: &[u8], private_key: &str) -> anyhow::Result<Vec<u8>> {
-    let identity: age::x25519::Identity = private_key
-        .parse()
-        .map_err(|e| anyhow::anyhow!("invalid private key: {e}"))?;
-    let decryptor = age::Decryptor::new(ciphertext)?;
-    let mut reader = decryptor.decrypt(std::iter::once(&identity as &dyn age::Identity))?;
-    let mut out = vec![];
-    reader.read_to_end(&mut out)?;
-    Ok(out)
 }
 
 fn secrets_home(home_dir: &Path) -> PathBuf {
@@ -252,79 +241,6 @@ fn encrypt_skips_rewrite_when_plaintext_is_unchanged() {
 
     let after = fs::read(&age_path).unwrap();
     assert_eq!(after, ciphertext);
-}
-
-#[test]
-fn rotate_dev_rewrites_keys_and_reencrypts_without_old_dev_key() {
-    let temp = tempfile::tempdir().unwrap();
-    let repo_dir = temp.path().join("repo");
-    let home_dir = temp.path().join("home");
-    fs::create_dir_all(&repo_dir).unwrap();
-    fs::create_dir_all(&home_dir).unwrap();
-
-    let slug = "demo-repo";
-    write_repo_config(&repo_dir, slug);
-
-    let old_dev_identity = age::x25519::Identity::generate();
-    let ci_identity = age::x25519::Identity::generate();
-    let old_dev_private = old_dev_identity.to_string().expose_secret().to_string();
-    let old_dev_public = old_dev_identity.to_public().to_string();
-    let ci_public = ci_identity.to_public().to_string();
-    write_keys_pub(&repo_dir, &old_dev_public, &ci_public);
-
-    let key_path = local_key_path(&home_dir, slug);
-    fs::create_dir_all(key_path.parent().unwrap()).unwrap();
-    fs::write(&key_path, format!("{old_dev_private}\n")).unwrap();
-
-    let plaintext = b"rotate-me";
-    let ciphertext = encrypt_for(&[old_dev_public.clone(), ci_public.clone()], plaintext);
-    let age_path = repo_dir.join(".a8c-secrets/secret.txt.age");
-    fs::write(&age_path, ciphertext).unwrap();
-
-    let mut child = std::process::Command::new(cargo_bin_exe())
-        .current_dir(&repo_dir)
-        .env("A8C_SECRETS_HOME", secrets_home(&home_dir))
-        .args(["keys", "rotate"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("spawn keys rotate");
-
-    if let Some(mut stdin) = child.stdin.take() {
-        writeln!(stdin, "1").unwrap();
-        writeln!(stdin, "yes").unwrap();
-    }
-
-    let status = child.wait().expect("wait on keys rotate");
-    assert!(status.success(), "keys rotate should succeed");
-
-    let keys_pub = fs::read_to_string(repo_dir.join(".a8c-secrets/keys.pub")).unwrap();
-    assert!(keys_pub.contains("# dev"));
-    assert!(keys_pub.contains("# ci"));
-    assert!(keys_pub.contains(&ci_public));
-    assert!(
-        !keys_pub.contains(&old_dev_public),
-        "old dev key should have been replaced"
-    );
-
-    let new_dev_private = fs::read_to_string(&key_path).unwrap().trim().to_string();
-    let new_identity: age::x25519::Identity = new_dev_private.parse().unwrap();
-    let new_dev_public = new_identity.to_public();
-    assert!(
-        keys_pub.contains(&new_dev_public.to_string()),
-        "keys.pub should contain new dev public key"
-    );
-
-    let new_ciphertext = fs::read(&age_path).unwrap();
-    assert_eq!(
-        decrypt_with_private(&new_ciphertext, &new_dev_private).unwrap(),
-        plaintext
-    );
-    assert!(
-        decrypt_with_private(&new_ciphertext, &old_dev_private).is_err(),
-        "old dev private key should no longer decrypt rotated file"
-    );
 }
 
 #[test]
@@ -579,57 +495,6 @@ fn setup_init_with_git_remote_then_encrypt_decrypt_roundtrip() {
         .success();
 
     assert_eq!(fs::read(local_dir.join("note.txt")).unwrap(), plaintext);
-}
-
-#[cfg(unix)]
-#[test]
-fn rotate_dev_sets_private_key_file_mode_0600() {
-    use std::os::unix::fs::PermissionsExt;
-
-    let temp = tempfile::tempdir().unwrap();
-    let repo_dir = temp.path().join("repo");
-    let home_dir = temp.path().join("home");
-    fs::create_dir_all(&repo_dir).unwrap();
-    fs::create_dir_all(&home_dir).unwrap();
-
-    let slug = "demo-repo";
-    write_repo_config(&repo_dir, slug);
-
-    let old_dev_identity = age::x25519::Identity::generate();
-    let ci_identity = age::x25519::Identity::generate();
-    let old_dev_private = old_dev_identity.to_string().expose_secret().to_string();
-    let old_dev_public = old_dev_identity.to_public().to_string();
-    let ci_public = ci_identity.to_public().to_string();
-    write_keys_pub(&repo_dir, &old_dev_public, &ci_public);
-
-    let key_path = local_key_path(&home_dir, slug);
-    fs::create_dir_all(key_path.parent().unwrap()).unwrap();
-    fs::write(&key_path, format!("{old_dev_private}\n")).unwrap();
-
-    let plaintext = b"rotate-me";
-    let ciphertext = encrypt_for(&[old_dev_public.clone(), ci_public.clone()], plaintext);
-    fs::write(repo_dir.join(".a8c-secrets/secret.txt.age"), ciphertext).unwrap();
-
-    let mut child = std::process::Command::new(cargo_bin_exe())
-        .current_dir(&repo_dir)
-        .env("A8C_SECRETS_HOME", secrets_home(&home_dir))
-        .args(["keys", "rotate"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("spawn keys rotate");
-
-    if let Some(mut stdin) = child.stdin.take() {
-        writeln!(stdin, "1").unwrap();
-        writeln!(stdin, "yes").unwrap();
-    }
-
-    let status = child.wait().expect("wait on keys rotate");
-    assert!(status.success(), "keys rotate should succeed");
-
-    let mode = fs::metadata(&key_path).unwrap().permissions().mode() & 0o777;
-    assert_eq!(mode, 0o600, "rotated dev key file should be 0600");
 }
 
 #[test]

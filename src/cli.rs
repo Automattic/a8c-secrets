@@ -193,8 +193,8 @@ key for this repo.")]
     /// Generate a new key pair and re-encrypt all files
     #[command(
         long_about = "\
-Rotate one recipient in keys.pub: interactively pick which public key to
-replace, then type `yes` to confirm the planned changes, then generate a new key pair, update keys.pub in place
+Rotate one recipient in keys.pub: pick which public key to replace from an
+interactive list, confirm with y/N, then generate a new key pair, update keys.pub in place
 (preserving comments), and re-encrypt each .age file under .a8c-secrets/
 (decrypt with your current private key in memory, then encrypt to the
 updated recipient list).

@@ -1,5 +1,6 @@
 use anyhow::Result;
 
+use super::{PUBLIC_KEY_LIST_LEGEND, PublicKeyListRow};
 use crate::config;
 use crate::crypto::derive_public_key;
 use crate::keys;
@@ -42,14 +43,13 @@ pub fn run() -> Result<()> {
     let public_keys = keys::load_public_keys(&repo_root)?;
 
     println!("Public keys ({}):", keys_pub_path.display());
-    println!("Legend: 🔑 = public key that matches your local private key.");
+    println!("{PUBLIC_KEY_LIST_LEGEND}");
     println!();
     for recipient in public_keys {
-        let prefix = match &derived_public {
-            Some(derived) if derived == &recipient => "🔑 ",
-            _ => "   ",
-        };
-        println!("{prefix}{recipient}");
+        println!(
+            "{}",
+            PublicKeyListRow::new(recipient, derived_public.as_deref())
+        );
     }
 
     Ok(())

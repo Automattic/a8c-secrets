@@ -6,6 +6,7 @@ use anyhow::{Context, Result};
 use crate::cli::DecryptArgs;
 use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::CryptoEngine;
+use crate::keys;
 use crate::permissions;
 
 fn compute_orphans(local_files: &[String], age_files: &BTreeSet<String>) -> Vec<String> {
@@ -31,11 +32,11 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
     let slug = &repo_config.repo;
 
     // Get or prompt for private key
-    let private_key = match config::get_private_key(slug) {
+    let private_key = match keys::get_private_key(slug) {
         Ok(key) => key,
         Err(_) if interactive => {
             println!("No private key found for '{slug}'.");
-            config::prompt_and_import_private_key(slug)?
+            keys::prompt_and_import_private_key(slug)?
         }
         Err(e) => return Err(e),
     };

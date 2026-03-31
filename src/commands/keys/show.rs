@@ -2,6 +2,7 @@ use anyhow::Result;
 
 use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::derive_public_key;
+use crate::keys;
 
 /// Display local/private key status and repository public keys.
 ///
@@ -15,10 +16,10 @@ pub fn run() -> Result<()> {
     let slug = &repo_config.repo;
 
     // Private key info
-    let key_path = config::private_key_path(slug)?;
+    let key_path = keys::private_key_path(slug)?;
     println!("Private key: {}", key_path.display());
 
-    let private_key = if let Ok(key) = config::get_private_key(slug) {
+    let private_key = if let Ok(key) = keys::get_private_key(slug) {
         println!("Status:      configured");
         Some(key)
     } else {
@@ -38,7 +39,7 @@ pub fn run() -> Result<()> {
     println!();
 
     let keys_pub_path = repo_root.join(REPO_SECRETS_DIR).join("keys.pub");
-    let entries = config::load_keys_pub_entries(&repo_root)?;
+    let entries = keys::load_keys_pub_entries(&repo_root)?;
 
     println!("Public keys ({}):", keys_pub_path.display());
     for e in entries {

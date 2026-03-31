@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use crate::cli::RotateArgs;
 use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::{CryptoEngine, derive_public_key};
+use crate::keys;
 
 fn identify_dev_ci_indices(public_keys: &[String], derived_public: &str) -> Result<(usize, usize)> {
     if public_keys.len() != 2 {
@@ -34,9 +35,9 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &RotateArgs) -> Result<()> {
     let repo_config = config::load_repo_config(&repo_root)?;
     let slug = &repo_config.repo;
 
-    let private_key = config::get_private_key(slug)?;
+    let private_key = keys::get_private_key(slug)?;
     let derived_public = derive_public_key(&private_key)?;
-    let public_keys = config::load_public_keys(&repo_root)?;
+    let public_keys = keys::load_public_keys(&repo_root)?;
 
     // Identify which key is dev (matches local private key) and which is ci
     let (dev_idx, ci_idx) = identify_dev_ci_indices(&public_keys, &derived_public)?;
@@ -89,7 +90,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &RotateArgs) -> Result<()> {
 
     // If rotating dev, save the new private key locally
     if args.dev {
-        let key_path = config::save_private_key(slug, &new_private)?;
+        let key_path = keys::save_private_key(slug, &new_private)?;
         println!();
         println!("Updated local private key at {}", key_path.display());
     }
@@ -105,7 +106,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &RotateArgs) -> Result<()> {
         println!("Next steps:");
         println!(
             "  1. Update Secret Store entry {} with the new dev private key",
-            config::secret_store_entry_name(slug, false)
+            keys::secret_store_entry_name(slug, false)
         );
         println!("  2. Notify team to run `a8c-secrets keys import`");
         println!("  3. Commit the updated keys.pub and .age files");
@@ -113,7 +114,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &RotateArgs) -> Result<()> {
         println!("Next steps:");
         println!(
             "  1. Update Secret Store entry {} with the new CI private key",
-            config::secret_store_entry_name(slug, true)
+            keys::secret_store_entry_name(slug, true)
         );
         println!("  2. Update Buildkite A8C_SECRETS_IDENTITY secret");
         println!("  3. Commit the updated keys.pub and .age files");

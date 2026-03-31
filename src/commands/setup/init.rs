@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 
 use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::CryptoEngine;
+use crate::keys;
 use crate::permissions;
 
 /// Initialize `a8c-secrets` in the current repository.
@@ -71,7 +72,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     )?;
 
     // Save dev private key locally
-    let key_path = config::save_private_key(&slug, &dev_private)?;
+    let key_path = keys::save_private_key(&slug, &dev_private)?;
 
     // Create the decrypted files directory
     let decrypted = config::decrypted_dir(&slug)?;
@@ -97,14 +98,14 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     println!("  1. Add the dev private key to Secret Store:");
     println!(
         "     {}  (create entry: {})",
-        config::SECRET_STORE_BASE_URL,
-        config::secret_store_entry_name(&slug, false)
+        keys::SECRET_STORE_BASE_URL,
+        keys::secret_store_entry_name(&slug, false)
     );
     println!("  2. Add the CI private key to Buildkite secrets");
     println!("     (coordinate with Apps Infra for the A8C_SECRETS_IDENTITY env var)");
     println!(
         "     Optional — Secret Store entry name for CI: {}",
-        config::secret_store_entry_name(&slug, true)
+        keys::secret_store_entry_name(&slug, true)
     );
     println!("  3. Commit .a8c-secrets/config.toml and .a8c-secrets/keys.pub");
     println!("  4. Add secret files with `a8c-secrets edit <filename>`");

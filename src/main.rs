@@ -5,6 +5,7 @@ mod cli;
 mod commands;
 mod config;
 mod crypto;
+mod keys;
 mod manual;
 mod permissions;
 

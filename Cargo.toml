@@ -16,6 +16,7 @@ dirs = "6"
 inquire = "0.7"
 rpassword = "7.4.0"
 serde = { version = "1", features = ["derive"] }
+shell-words = "1.1"
 tempfile = "3"
 toml = "0.8"
 zeroize = "1.7"

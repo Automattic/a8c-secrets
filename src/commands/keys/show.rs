@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use super::{PublicKeyListRow, PUBLIC_KEY_LIST_LEGEND};
+use super::{PUBLIC_KEY_LIST_LEGEND, PublicKeyListRow};
 use crate::config;
 use crate::crypto::PrivateKey;
 use crate::keys;
@@ -48,10 +48,7 @@ pub fn run() -> Result<()> {
     for recipient in public_keys {
         println!(
             "{}",
-            PublicKeyListRow::new(
-                recipient,
-                derived_public.as_ref(),
-            )
+            PublicKeyListRow::new(recipient, derived_public.as_ref(),)
         );
     }
 

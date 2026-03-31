@@ -42,9 +42,9 @@ pub fn public_keys_path(repo_root: &Path) -> PathBuf {
 }
 
 fn parse_private_key_trimmed(label: &str, raw: &str) -> Result<PrivateKey> {
-    raw.trim().parse::<PrivateKey>().map_err(|e| {
-        anyhow::anyhow!("Invalid private key in {label}: {e}")
-    })
+    raw.trim()
+        .parse::<PrivateKey>()
+        .map_err(|e| anyhow::anyhow!("Invalid private key in {label}: {e}"))
 }
 
 /// Read the private key, checking `A8C_SECRETS_IDENTITY` env var first,
@@ -156,9 +156,8 @@ pub fn prompt_and_import_private_key(slug: &str) -> Result<PrivateKey> {
         io::stdin().lock().read_line(&mut line)?;
         line
     };
-    let key = PrivateKey::from_str(raw.trim()).map_err(|e| {
-        anyhow::anyhow!("Invalid private key: {e}")
-    })?;
+    let key = PrivateKey::from_str(raw.trim())
+        .map_err(|e| anyhow::anyhow!("Invalid private key: {e}"))?;
 
     let key_path = private_key_path(slug)?;
     let existed = key_path.exists();

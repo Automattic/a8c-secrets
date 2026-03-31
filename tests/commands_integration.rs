@@ -281,12 +281,23 @@ fn rotate_dev_rewrites_keys_and_reencrypts_without_old_dev_key() {
     let age_path = repo_dir.join(".a8c-secrets/secret.txt.age");
     fs::write(&age_path, ciphertext).unwrap();
 
-    configured_command(&repo_dir, &home_dir)
-        .arg("keys")
-        .arg("rotate")
-        .arg("--dev")
-        .assert()
-        .success();
+    let mut child = std::process::Command::new(cargo_bin_exe())
+        .current_dir(&repo_dir)
+        .env("A8C_SECRETS_HOME", secrets_home(&home_dir))
+        .args(["keys", "rotate"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn keys rotate");
+
+    if let Some(mut stdin) = child.stdin.take() {
+        writeln!(stdin, "1").unwrap();
+        writeln!(stdin, "yes").unwrap();
+    }
+
+    let status = child.wait().expect("wait on keys rotate");
+    assert!(status.success(), "keys rotate should succeed");
 
     let keys_pub = fs::read_to_string(repo_dir.join(".a8c-secrets/keys.pub")).unwrap();
     assert!(keys_pub.contains("# dev"));
@@ -599,10 +610,23 @@ fn rotate_dev_sets_private_key_file_mode_0600() {
     let ciphertext = encrypt_for(&[old_dev_public.clone(), ci_public.clone()], plaintext);
     fs::write(repo_dir.join(".a8c-secrets/secret.txt.age"), ciphertext).unwrap();
 
-    configured_command(&repo_dir, &home_dir)
-        .args(["keys", "rotate", "--dev"])
-        .assert()
-        .success();
+    let mut child = std::process::Command::new(cargo_bin_exe())
+        .current_dir(&repo_dir)
+        .env("A8C_SECRETS_HOME", secrets_home(&home_dir))
+        .args(["keys", "rotate"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn keys rotate");
+
+    if let Some(mut stdin) = child.stdin.take() {
+        writeln!(stdin, "1").unwrap();
+        writeln!(stdin, "yes").unwrap();
+    }
+
+    let status = child.wait().expect("wait on keys rotate");
+    assert!(status.success(), "keys rotate should succeed");
 
     let mode = fs::metadata(&key_path).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode, 0o600, "rotated dev key file should be 0600");

@@ -193,35 +193,23 @@ key for this repo.")]
     /// Generate a new key pair and re-encrypt all files
     #[command(
         long_about = "\
-Rotate a key pair: generate a new key and re-encrypt all .age files.
+Rotate one recipient in keys.pub: interactively pick which public key to
+replace, then type `yes` to confirm the planned changes, then generate a new key pair, update keys.pub in place
+(preserving comments), and re-encrypt each .age file under .a8c-secrets/
+(decrypt with your current private key in memory, then encrypt to the
+updated recipient list).
 
-Exactly one of --dev or --ci is required. The target key is identified by
-matching, not by comment labels in keys.pub:
-  --dev  replaces the key matching your local private key
-  --ci   replaces the other key
-
-After rotation, prints the new private key and manual next steps.",
-        after_long_help = "\
-EXAMPLES:
-  a8c-secrets keys rotate --dev    # After employee offboarding
-  a8c-secrets keys rotate --ci     # Rotate the CI key
+Requires a local private key that matches at least one line in keys.pub.
+After rotation, prints the new private key and next steps (Secret Store /
+CI secrets depending on whether you rotated the key you hold locally).
 
 NOTE: Key rotation does NOT rotate the actual secret values inside the
-encrypted files. You must separately rotate API keys, tokens, etc."
+encrypted files. You must separately rotate API keys, tokens, etc.",
+        after_long_help = "\
+EXAMPLE:
+  a8c-secrets keys rotate"
     )]
-    Rotate(RotateArgs),
-}
-
-#[derive(Debug, clap::Args)]
-#[command(group = clap::ArgGroup::new("target").required(true).multiple(false))]
-pub struct RotateArgs {
-    /// Rotate the developer key
-    #[arg(long, group = "target")]
-    pub dev: bool,
-
-    /// Rotate the CI key
-    #[arg(long, group = "target")]
-    pub ci: bool,
+    Rotate,
 }
 
 // -- Setup subcommands --
@@ -331,30 +319,13 @@ mod tests {
     }
 
     #[test]
-    fn parse_keys_rotate_dev() {
-        let cli = parse(&["keys", "rotate", "--dev"]).unwrap();
+    fn parse_keys_rotate() {
+        let cli = parse(&["keys", "rotate"]).unwrap();
         if let Command::Keys(sub) = cli.command {
-            if let KeysCommand::Rotate(args) = sub.command {
-                assert!(args.dev);
-                assert!(!args.ci);
-            } else {
-                panic!("expected Rotate");
-            }
+            assert!(matches!(sub.command, KeysCommand::Rotate));
         } else {
             panic!("expected Keys");
         }
-    }
-
-    #[test]
-    fn parse_keys_rotate_no_flag_errors() {
-        let err = parse(&["keys", "rotate"]).unwrap_err();
-        assert_eq!(err.kind(), ErrorKind::MissingRequiredArgument);
-    }
-
-    #[test]
-    fn parse_keys_rotate_both_flags_errors() {
-        let err = parse(&["keys", "rotate", "--dev", "--ci"]).unwrap_err();
-        assert_eq!(err.kind(), ErrorKind::ArgumentConflict);
     }
 
     #[test]

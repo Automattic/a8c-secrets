@@ -207,6 +207,76 @@ pub fn load_public_keys(repo_root: &Path) -> Result<Vec<String>> {
     Ok(out)
 }
 
+/// Replace every recipient line in `keys.pub` whose trimmed value equals
+/// `old_public.trim()` with `new_public`.
+///
+/// Comment lines, blank lines, and other non-recipient lines are left unchanged.
+/// Recipient lines are the same as those read by [`load_public_keys`] (non-empty,
+/// not starting with `#`, valid age recipient).
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read or written, if `old_public` or
+/// `new_public` is not a valid recipient, if no matching recipient line exists,
+/// or if a non-comment line fails recipient parsing.
+pub fn replace_recipient_public_key_in_keys_pub(
+    repo_root: &Path,
+    old_public: &str,
+    new_public: &str,
+) -> Result<()> {
+    let old_trim = old_public.trim();
+    old_trim
+        .parse::<Recipient>()
+        .map_err(|e| anyhow::anyhow!("Invalid old public key: {e}"))?;
+    new_public
+        .parse::<Recipient>()
+        .map_err(|e| anyhow::anyhow!("Invalid new public key: {e}"))?;
+
+    let path = public_keys_path(repo_root);
+    let content = std::fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read {}", path.display()))?;
+
+    let mut out_lines: Vec<String> = Vec::new();
+    let mut replace_count = 0usize;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            out_lines.push(line.to_string());
+            continue;
+        }
+        trimmed.parse::<Recipient>().map_err(|parse_err| {
+            anyhow::anyhow!(
+                "Invalid recipient public key in {}: {:?}: {parse_err}",
+                path.display(),
+                trimmed
+            )
+        })?;
+        if trimmed == old_trim {
+            out_lines.push(new_public.to_string());
+            replace_count += 1;
+        } else {
+            out_lines.push(line.to_string());
+        }
+    }
+
+    if replace_count == 0 {
+        anyhow::bail!(
+            "No recipient line matching the old public key found in {}",
+            path.display()
+        );
+    }
+
+    let mut new_content = out_lines.join("\n");
+    if content.ends_with('\n') {
+        new_content.push('\n');
+    }
+
+    config::atomic_write(&path, new_content.as_bytes())
+        .with_context(|| format!("Failed to write {}", path.display()))?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -294,6 +364,92 @@ mod tests {
 
         let result = load_public_keys(dir.path());
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn replace_recipient_public_key_preserves_comments_and_blanks() {
+        let dir = tempfile::tempdir().unwrap();
+        let secrets = dir.path().join(REPO_SECRETS_DIR);
+        fs::create_dir_all(&secrets).unwrap();
+        let engine = AgeCrateEngine::new();
+        let (_, pub1) = engine.keygen().unwrap();
+        let (_, pub2) = engine.keygen().unwrap();
+        let (_, pub3) = engine.keygen().unwrap();
+
+        let original = format!("# dev\n{pub1}\n\n# ci\n{pub2}\n# tail\n");
+        fs::write(public_keys_path(dir.path()), &original).unwrap();
+
+        replace_recipient_public_key_in_keys_pub(dir.path(), &pub2, &pub3).unwrap();
+
+        let after = fs::read_to_string(public_keys_path(dir.path())).unwrap();
+        assert!(after.contains("# dev"));
+        assert!(after.contains(&pub1));
+        assert!(after.contains("# ci"));
+        assert!(after.contains(&pub3));
+        assert!(!after.contains(&pub2));
+        assert!(after.contains("# tail"));
+        assert!(after.contains("\n\n"));
+    }
+
+    #[test]
+    fn replace_recipient_public_key_matches_trimmed_line() {
+        let dir = tempfile::tempdir().unwrap();
+        let secrets = dir.path().join(REPO_SECRETS_DIR);
+        fs::create_dir_all(&secrets).unwrap();
+        let engine = AgeCrateEngine::new();
+        let (_, pub1) = engine.keygen().unwrap();
+        let (_, pub2) = engine.keygen().unwrap();
+        let (_, new1) = engine.keygen().unwrap();
+
+        fs::write(
+            public_keys_path(dir.path()),
+            format!("# x\n  {pub1}  \n{pub2}\n"),
+        )
+        .unwrap();
+
+        replace_recipient_public_key_in_keys_pub(dir.path(), &pub1, &new1).unwrap();
+        let keys = load_public_keys(dir.path()).unwrap();
+        assert_eq!(keys, vec![new1.clone(), pub2]);
+    }
+
+    #[test]
+    fn replace_recipient_public_key_not_found_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let secrets = dir.path().join(REPO_SECRETS_DIR);
+        fs::create_dir_all(&secrets).unwrap();
+        let engine = AgeCrateEngine::new();
+        let (_, pub1) = engine.keygen().unwrap();
+        let (_, pub2) = engine.keygen().unwrap();
+        fs::write(public_keys_path(dir.path()), format!("{pub1}\n")).unwrap();
+
+        let err = replace_recipient_public_key_in_keys_pub(dir.path(), &pub2, &pub1).unwrap_err();
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("No recipient line matching"),
+            "unexpected: {msg}"
+        );
+    }
+
+    #[test]
+    fn replace_recipient_public_key_replaces_all_duplicate_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let secrets = dir.path().join(REPO_SECRETS_DIR);
+        fs::create_dir_all(&secrets).unwrap();
+        let engine = AgeCrateEngine::new();
+        let (_, pub1) = engine.keygen().unwrap();
+        let (_, new1) = engine.keygen().unwrap();
+
+        fs::write(
+            public_keys_path(dir.path()),
+            format!("# a\n{pub1}\n# b\n{pub1}\n"),
+        )
+        .unwrap();
+
+        replace_recipient_public_key_in_keys_pub(dir.path(), &pub1, &new1).unwrap();
+        let keys = load_public_keys(dir.path()).unwrap();
+        assert_eq!(keys, vec![new1.clone(), new1.clone()]);
+        let raw = fs::read_to_string(public_keys_path(dir.path())).unwrap();
+        assert!(!raw.contains(&pub1));
     }
 
     #[test]

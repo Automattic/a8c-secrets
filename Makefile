@@ -1,4 +1,4 @@
-.PHONY: check-debug build-debug check-release build-release test fmt lint lint-pedantic lint-fix help
+.PHONY: check-debug build-debug check-release build-release test fmt fmt-check lint lint-pedantic lint-fix help
 
 help:
 	@echo "Available targets:"
@@ -8,6 +8,7 @@ help:
 	@echo "  build-release  - Build the project in release mode"
 	@echo "  test           - Run all tests"
 	@echo "  fmt            - Format the code"
+	@echo "  fmt-check      - Verify formatting (cargo fmt --check)"
 	@echo "  lint           - Run clippy linter"
 	@echo "  lint-pedantic  - Run clippy with pedantic warnings"
 	@echo "  lint-fix       - Run clippy and auto-fix issues"
@@ -29,6 +30,9 @@ test:
 
 fmt:
 	cargo fmt
+
+fmt-check:
+	cargo fmt --check
 
 lint:
 	cargo clippy --all-targets -- --deny warnings

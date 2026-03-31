@@ -178,8 +178,7 @@ pub enum KeysCommand {
 Display key information for the current repository.
 
 Shows the private key file path, derives the corresponding public key,
-and lists all public keys from .a8c-secrets/keys.pub. Marks the entry
-that matches your local private key (if configured).")]
+and lists all public keys from .a8c-secrets/keys.pub.")]
     Show,
 
     /// Import a private key from the Secret Store

@@ -110,6 +110,8 @@ KEY MANAGEMENT
 
     The tool identifies which key is yours by deriving the public key from
     your local private key and matching it against entries in keys.pub.
+    `keys show` prefixes that entry with 🔑 and prints a legend; other
+    recipient lines use spacing only so columns stay aligned.
     Lines starting with # in keys.pub are treated as comments and ignored
     (same as age recipient files); they are optional human notes only.
 

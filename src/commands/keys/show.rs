@@ -42,12 +42,14 @@ pub fn run() -> Result<()> {
     let public_keys = keys::load_public_keys(&repo_root)?;
 
     println!("Public keys ({}):", keys_pub_path.display());
+    println!("Legend: 🔑 = public key that matches your local private key.");
+    println!();
     for recipient in public_keys {
-        let marker = match &derived_public {
-            Some(derived) if derived == &recipient => " <-- your key",
-            _ => "",
+        let prefix = match &derived_public {
+            Some(derived) if derived == &recipient => "🔑 ",
+            _ => "   ",
         };
-        println!("  {recipient}{marker}");
+        println!("{prefix}{recipient}");
     }
 
     Ok(())

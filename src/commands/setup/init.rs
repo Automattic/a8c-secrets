@@ -1,22 +1,11 @@
 use std::io::{self, IsTerminal, Write};
 
-use age::secrecy::ExposeSecret;
 use anyhow::{Context, Result};
-use zeroize::Zeroizing;
 
 use crate::config::{self, REPO_SECRETS_DIR};
-use crate::crypto::{CryptoEngine, PrivateKey};
+use crate::crypto::CryptoEngine;
 use crate::keys;
 use crate::permissions;
-
-fn print_private_key_block(title: &str, key: &PrivateKey) -> Result<()> {
-    let key_text = Zeroizing::new(format!("{}\n", key.to_string().expose_secret()));
-    let mut out = io::stdout().lock();
-    writeln!(out, "--- {title} ---")?;
-    out.write_all(key_text.as_bytes())?;
-    writeln!(out)?;
-    Ok(())
-}
 
 /// Initialize `a8c-secrets` in the current repository.
 ///
@@ -104,8 +93,8 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     println!("  {}  (public keys)", keys_pub_path.display());
     println!("  {}  (dev private key)", key_path.display());
     println!();
-    print_private_key_block("Dev private key", &dev_private)?;
-    print_private_key_block("CI private key", &ci_private)?;
+    keys::print_private_key_to_stdout("Dev private key", &dev_private)?;
+    keys::print_private_key_to_stdout("CI private key", &ci_private)?;
     println!("Next steps:");
     println!("  1. Add the dev private key to Secret Store:");
     println!(

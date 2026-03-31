@@ -5,7 +5,7 @@
 
 use age::secrecy::ExposeSecret;
 use anyhow::{Context, Result};
-use std::io::{self, BufRead, IsTerminal};
+use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use zeroize::Zeroizing;
@@ -24,6 +24,20 @@ pub fn secret_store_entry_name(slug: &str, for_ci: bool) -> String {
     } else {
         format!("a8c-secrets dev private key for {slug}")
     }
+}
+
+/// Print a titled private key block to stdout.
+///
+/// # Errors
+///
+/// Returns an error if writing to stdout fails.
+pub fn print_private_key_to_stdout(title: &str, key: &PrivateKey) -> Result<()> {
+    let key_text = Zeroizing::new(format!("{}\n", key.to_string().expose_secret()));
+    let mut out = std::io::stdout().lock();
+    writeln!(out, "--- {title} ---")?;
+    out.write_all(key_text.as_bytes())?;
+    writeln!(out)?;
+    Ok(())
 }
 
 /// Path to the private key file for a given repo slug.

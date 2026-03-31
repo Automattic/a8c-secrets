@@ -157,13 +157,18 @@ mod tests {
 
         let dacl = dacl_sddl.to_string_lossy();
         let upper = dacl.to_uppercase();
+
+        // Normalize by removing all whitespace for comparison.
+        let normalized_actual: String = upper.chars().filter(|c| !c.is_whitespace()).collect();
+        let expected_sddl = format!("D:P(A;;FA;;;{})", sid_upper);
+        let normalized_expected: String = expected_sddl
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+
         assert!(
-            upper.contains("D:P"),
-            "expected protected DACL (D:P) in {dacl:?}"
-        );
-        assert!(
-            upper.contains("(A;;FA;;;") && upper.contains(&sid_upper),
-            "expected full-access ACE for current user SID in {dacl:?}"
+            normalized_actual == normalized_expected,
+            "expected exact owner-only DACL {expected_sddl:?}, got {dacl:?}"
         );
     }
 

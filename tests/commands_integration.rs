@@ -501,6 +501,40 @@ fn setup_init_requires_interactive_tty() {
 }
 
 #[test]
+fn keys_rotate_requires_interactive_tty() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_dir = temp.path().join("repo");
+    fs::create_dir_all(&repo_dir).unwrap();
+
+    let mut child = std::process::Command::new(cargo_bin_exe())
+        .current_dir(&repo_dir)
+        .args(["keys", "rotate"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn keys rotate");
+
+    if let Some(mut stdin) = child.stdin.take() {
+        writeln!(stdin).unwrap();
+    }
+
+    let out = child
+        .wait_with_output()
+        .expect("wait_with_output on keys rotate");
+    assert!(
+        !out.status.success(),
+        "keys rotate should fail when stdin/stdout are not TTYs"
+    );
+    let combined =
+        String::from_utf8_lossy(&out.stderr).to_string() + &String::from_utf8_lossy(&out.stdout);
+    assert!(
+        combined.contains("interactive terminal (TTY)"),
+        "expected TTY requirement message, got: {combined}"
+    );
+}
+
+#[test]
 fn setup_completions_bash_outputs_script() {
     let temp = tempfile::tempdir().unwrap();
     let home_dir = temp.path().join("home");

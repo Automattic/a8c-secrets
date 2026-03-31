@@ -84,7 +84,7 @@ NOTES:
         long_about = "\
 Open a secret file in your editor for modification.
 
-Opens ~/.a8c-secrets/<repo>/<file> in $EDITOR (default: vi). The value is parsed
+Opens ~/.a8c-secrets/<repo>/<file> in $EDITOR (default: vi on Unix / notepad on Windows). The value is parsed
 like shell words (program plus optional arguments; quote paths that contain spaces).
 Compares file content before and after the editor session — only encrypts if changed.
 If the file doesn't exist, prompts to create it.",

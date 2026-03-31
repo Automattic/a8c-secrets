@@ -78,13 +78,12 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
         .status()
         .with_context(|| format!("Failed to launch editor: {editor_spec}"))?;
 
-    if !status.success() {
-        anyhow::bail!("Editor exited with non-zero status");
-    }
-
     // Match `decrypt`: editors often leave world-readable files (umask); tighten after save.
     permissions::set_secure_file_permissions(&local_path)?;
 
+    if !status.success() {
+        anyhow::bail!("Editor exited with non-zero status");
+    }
     // Hash after editing
     let after = Zeroizing::new(std::fs::read(&local_path)?);
 
@@ -109,6 +108,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::default_editor;
+    #[cfg(unix)]
     use crate::permissions;
 
     #[cfg(unix)]
@@ -123,7 +123,7 @@ mod tests {
         let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         assert_eq!(
             mode, 0o600,
-            "new decrypted files should be owner-read/write only"
+            "new files created for edit should be owner-read/write only"
         );
     }
 

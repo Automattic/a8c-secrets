@@ -189,7 +189,6 @@ pub fn load_public_keys(repo_root: &Path) -> Result<Vec<PublicKey>> {
 
     let mut out = Vec::new();
     for (idx, line) in content.lines().enumerate() {
-        let line_number = idx + 1;
         let trimmed = line.trim();
         if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
@@ -198,7 +197,7 @@ pub fn load_public_keys(repo_root: &Path) -> Result<Vec<PublicKey>> {
             anyhow::anyhow!(
                 "Invalid recipient public key in {} at line {}: {:?}: {parse_err}",
                 path.display(),
-                line_number,
+                idx + 1,
                 trimmed
             )
         })?;
@@ -241,7 +240,7 @@ pub fn replace_recipient_public_key_in_keys_pub(
         }
         let parsed = trimmed.parse::<PublicKey>().map_err(|parse_err| {
             anyhow::anyhow!(
-                "Invalid recipient public key in {} on line {}: {:?}: {parse_err}",
+                "Invalid recipient public key in {} at line {}: {:?}: {parse_err}",
                 path.display(),
                 idx + 1,
                 trimmed
@@ -278,6 +277,8 @@ mod tests {
     use std::fs;
 
     use crate::crypto::{AgeCrateEngine, CryptoEngine};
+    use age::secrecy::ExposeSecret;
+    use serial_test::serial;
 
     #[test]
     fn secret_store_entry_name_dev_substitutes_slug() {
@@ -447,46 +448,57 @@ mod tests {
     }
 
     #[test]
+    #[serial(a8c_secrets_home)]
     fn save_private_key_creates_dirs_and_writes_file() {
-        let slug = &format!("save-test-{}", std::process::id());
-        let engine = AgeCrateEngine::new();
-        let (private, _) = engine.keygen().unwrap();
-        let expected_line = private.to_string().expose_secret().to_string();
-        let path = save_private_key(slug, &private).unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let secrets_home = temp.path().join("home").join(".a8c-secrets");
+        let secrets_home_str = secrets_home.to_str().unwrap();
+        temp_env::with_var("A8C_SECRETS_HOME", Some(secrets_home_str), || {
+            let slug = &format!("save-test-{}", std::process::id());
+            let engine = AgeCrateEngine::new();
+            let (private, _) = engine.keygen().unwrap();
+            let expected_line = private.to_string().expose_secret().to_string();
+            let path = save_private_key(slug, &private).unwrap();
 
-        assert!(path.exists());
-        let content = fs::read_to_string(&path).unwrap();
-        assert_eq!(content.trim(), expected_line);
+            assert!(path.starts_with(&secrets_home));
+            assert!(path.exists());
+            let content = fs::read_to_string(&path).unwrap();
+            assert_eq!(content.trim(), expected_line);
 
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
-            assert_eq!(mode, 0o600);
-            let parent_mode = fs::metadata(path.parent().unwrap())
-                .unwrap()
-                .permissions()
-                .mode()
-                & 0o777;
-            assert_eq!(parent_mode, 0o700);
-        }
-
-        let _ = fs::remove_file(&path);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+                assert_eq!(mode, 0o600);
+                let parent_mode = fs::metadata(path.parent().unwrap())
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777;
+                assert_eq!(parent_mode, 0o700);
+            }
+        });
     }
 
     #[test]
+    #[serial(a8c_secrets_home)]
     fn save_private_key_overwrites_existing() {
-        let slug = &format!("save-overwrite-{}", std::process::id());
-        let engine = AgeCrateEngine::new();
-        let (key1, _) = engine.keygen().unwrap();
-        let (key2, _) = engine.keygen().unwrap();
-        let path1 = save_private_key(slug, &key1).unwrap();
-        let path2 = save_private_key(slug, &key2).unwrap();
-        assert_eq!(path1, path2);
-        assert_eq!(
-            fs::read_to_string(&path2).unwrap().trim(),
-            key2.to_string().expose_secret()
-        );
-        let _ = fs::remove_file(&path2);
+        let temp = tempfile::tempdir().unwrap();
+        let secrets_home = temp.path().join("home").join(".a8c-secrets");
+        let secrets_home_str = secrets_home.to_str().unwrap();
+        temp_env::with_var("A8C_SECRETS_HOME", Some(secrets_home_str), || {
+            let slug = &format!("save-overwrite-{}", std::process::id());
+            let engine = AgeCrateEngine::new();
+            let (key1, _) = engine.keygen().unwrap();
+            let (key2, _) = engine.keygen().unwrap();
+            let path1 = save_private_key(slug, &key1).unwrap();
+            let path2 = save_private_key(slug, &key2).unwrap();
+            assert!(path1.starts_with(&secrets_home));
+            assert_eq!(path1, path2);
+            assert_eq!(
+                fs::read_to_string(&path2).unwrap().trim(),
+                key2.to_string().expose_secret()
+            );
+        });
     }
 }

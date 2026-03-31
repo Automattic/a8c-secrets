@@ -26,3 +26,5 @@ windows-permissions = "0.2.4"
 
 [dev-dependencies]
 assert_cmd = "2"
+serial_test = "3"
+temp-env = "0.3"

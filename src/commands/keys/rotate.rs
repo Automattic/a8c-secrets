@@ -250,45 +250,14 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use age::secrecy::ExposeSecret;
     use std::fs;
     use std::io::{Read, Write};
-    use std::sync::Mutex;
-
-    use age::secrecy::ExposeSecret;
 
     use super::apply_key_rotation;
     use crate::config::REPO_SECRETS_DIR;
     use crate::crypto::{AgeCrateEngine, PublicKey};
-
-    static A8C_SECRETS_HOME_TEST_LOCK: Mutex<()> = Mutex::new(());
-
-    struct EnvVarRestore {
-        key: &'static str,
-        prev: Option<String>,
-    }
-
-    impl EnvVarRestore {
-        fn set(key: &'static str, value: &str) -> Self {
-            let prev = std::env::var(key).ok();
-            // SAFETY: `A8C_SECRETS_HOME_TEST_LOCK` serializes tests that touch this variable.
-            unsafe {
-                std::env::set_var(key, value);
-            }
-            Self { key, prev }
-        }
-    }
-
-    impl Drop for EnvVarRestore {
-        fn drop(&mut self) {
-            // SAFETY: same as `set`.
-            unsafe {
-                match &self.prev {
-                    Some(v) => std::env::set_var(self.key, v),
-                    None => std::env::remove_var(self.key),
-                }
-            }
-        }
-    }
+    use serial_test::serial;
 
     fn encrypt_for_recipients(recipients: &[PublicKey], plaintext: &[u8]) -> Vec<u8> {
         let encryptor =
@@ -331,138 +300,131 @@ mod tests {
     }
 
     #[test]
+    #[serial(a8c_secrets_home)]
     fn apply_rotation_replaces_dev_key_and_reencrypts() {
-        let _lock = A8C_SECRETS_HOME_TEST_LOCK.lock().unwrap();
-
         let temp = tempfile::tempdir().unwrap();
         let home_dir = temp.path().join("home");
         fs::create_dir_all(&home_dir).unwrap();
-        let _home_guard = EnvVarRestore::set(
-            "A8C_SECRETS_HOME",
-            home_dir.join(".a8c-secrets").to_str().unwrap(),
-        );
+        let secrets_home = home_dir.join(".a8c-secrets");
+        let secrets_home_str = secrets_home.to_str().unwrap();
+        temp_env::with_var("A8C_SECRETS_HOME", Some(secrets_home_str), || {
+            let repo_dir = tempfile::tempdir().unwrap();
+            let slug = "demo-repo";
+            write_repo_config(repo_dir.path(), slug);
 
-        let repo_dir = tempfile::tempdir().unwrap();
-        let slug = "demo-repo";
-        write_repo_config(repo_dir.path(), slug);
+            let old_dev_identity = age::x25519::Identity::generate();
+            let ci_identity = age::x25519::Identity::generate();
+            let old_dev_private = old_dev_identity.to_string().expose_secret().to_string();
+            let old_dev_public = old_dev_identity.to_public().to_string();
+            let ci_public = ci_identity.to_public().to_string();
+            write_keys_pub(repo_dir.path(), &old_dev_public, &ci_public);
 
-        let old_dev_identity = age::x25519::Identity::generate();
-        let ci_identity = age::x25519::Identity::generate();
-        let old_dev_private = old_dev_identity.to_string().expose_secret().to_string();
-        let old_dev_public = old_dev_identity.to_public().to_string();
-        let ci_public = ci_identity.to_public().to_string();
-        write_keys_pub(repo_dir.path(), &old_dev_public, &ci_public);
+            let key_path = secrets_home.join("keys").join(format!("{slug}.key"));
+            fs::create_dir_all(key_path.parent().unwrap()).unwrap();
+            fs::write(&key_path, format!("{old_dev_private}\n")).unwrap();
 
-        let key_path = home_dir
-            .join(".a8c-secrets/keys")
-            .join(format!("{slug}.key"));
-        fs::create_dir_all(key_path.parent().unwrap()).unwrap();
-        fs::write(&key_path, format!("{old_dev_private}\n")).unwrap();
+            let plaintext = b"rotate-me";
+            let ciphertext = encrypt_for_recipients(
+                &[old_dev_identity.to_public(), ci_identity.to_public()],
+                plaintext,
+            );
+            let age_path = repo_dir.path().join(".a8c-secrets/secret.txt.age");
+            fs::write(&age_path, ciphertext).unwrap();
 
-        let plaintext = b"rotate-me";
-        let ciphertext = encrypt_for_recipients(
-            &[old_dev_identity.to_public(), ci_identity.to_public()],
-            plaintext,
-        );
-        let age_path = repo_dir.path().join(".a8c-secrets/secret.txt.age");
-        fs::write(&age_path, ciphertext).unwrap();
+            let engine = AgeCrateEngine::new();
+            let old_dev_public_key = old_dev_identity.to_public();
 
-        let engine = AgeCrateEngine::new();
-        let old_dev_public_key = old_dev_identity.to_public();
+            apply_key_rotation(
+                &engine,
+                repo_dir.path(),
+                slug,
+                &old_dev_public_key,
+                &old_dev_identity,
+            )
+            .expect("apply_key_rotation");
 
-        apply_key_rotation(
-            &engine,
-            repo_dir.path(),
-            slug,
-            &old_dev_public_key,
-            &old_dev_identity,
-        )
-        .expect("apply_key_rotation");
+            let keys_pub =
+                fs::read_to_string(repo_dir.path().join(".a8c-secrets/keys.pub")).unwrap();
+            assert!(keys_pub.contains("# dev"));
+            assert!(keys_pub.contains("# ci"));
+            assert!(keys_pub.contains(&ci_public));
+            assert!(
+                !keys_pub.contains(&old_dev_public),
+                "old dev key should have been replaced"
+            );
 
-        let keys_pub = fs::read_to_string(repo_dir.path().join(".a8c-secrets/keys.pub")).unwrap();
-        assert!(keys_pub.contains("# dev"));
-        assert!(keys_pub.contains("# ci"));
-        assert!(keys_pub.contains(&ci_public));
-        assert!(
-            !keys_pub.contains(&old_dev_public),
-            "old dev key should have been replaced"
-        );
+            let new_dev_private = fs::read_to_string(&key_path).unwrap().trim().to_string();
+            let new_identity: age::x25519::Identity = new_dev_private.parse().unwrap();
+            let new_dev_public = new_identity.to_public();
+            assert!(
+                keys_pub.contains(&new_dev_public.to_string()),
+                "keys.pub should contain new dev public key"
+            );
 
-        let new_dev_private = fs::read_to_string(&key_path).unwrap().trim().to_string();
-        let new_identity: age::x25519::Identity = new_dev_private.parse().unwrap();
-        let new_dev_public = new_identity.to_public();
-        assert!(
-            keys_pub.contains(&new_dev_public.to_string()),
-            "keys.pub should contain new dev public key"
-        );
-
-        let new_ciphertext = fs::read(&age_path).unwrap();
-        assert_eq!(
-            decrypt_with_private(&new_ciphertext, &new_dev_private).unwrap(),
-            plaintext
-        );
-        assert!(
-            decrypt_with_private(&new_ciphertext, &old_dev_private).is_err(),
-            "old dev private key should no longer decrypt rotated file"
-        );
+            let new_ciphertext = fs::read(&age_path).unwrap();
+            assert_eq!(
+                decrypt_with_private(&new_ciphertext, &new_dev_private).unwrap(),
+                plaintext
+            );
+            assert!(
+                decrypt_with_private(&new_ciphertext, &old_dev_private).is_err(),
+                "old dev private key should no longer decrypt rotated file"
+            );
+        });
     }
 
     #[cfg(unix)]
     #[test]
+    #[serial(a8c_secrets_home)]
     fn apply_rotation_sets_private_key_file_mode_0600() {
         use std::os::unix::fs::PermissionsExt;
-
-        let _lock = A8C_SECRETS_HOME_TEST_LOCK.lock().unwrap();
 
         let temp = tempfile::tempdir().unwrap();
         let home_dir = temp.path().join("home");
         fs::create_dir_all(&home_dir).unwrap();
-        let _home_guard = EnvVarRestore::set(
-            "A8C_SECRETS_HOME",
-            home_dir.join(".a8c-secrets").to_str().unwrap(),
-        );
+        let secrets_home = home_dir.join(".a8c-secrets");
+        let secrets_home_str = secrets_home.to_str().unwrap();
+        temp_env::with_var("A8C_SECRETS_HOME", Some(secrets_home_str), || {
+            let repo_dir = tempfile::tempdir().unwrap();
+            let slug = "demo-repo";
+            write_repo_config(repo_dir.path(), slug);
 
-        let repo_dir = tempfile::tempdir().unwrap();
-        let slug = "demo-repo";
-        write_repo_config(repo_dir.path(), slug);
+            let old_dev_identity = age::x25519::Identity::generate();
+            let ci_identity = age::x25519::Identity::generate();
+            let old_dev_private = old_dev_identity.to_string().expose_secret().to_string();
+            let old_dev_public = old_dev_identity.to_public().to_string();
+            let ci_public = ci_identity.to_public().to_string();
+            write_keys_pub(repo_dir.path(), &old_dev_public, &ci_public);
 
-        let old_dev_identity = age::x25519::Identity::generate();
-        let ci_identity = age::x25519::Identity::generate();
-        let old_dev_private = old_dev_identity.to_string().expose_secret().to_string();
-        let old_dev_public = old_dev_identity.to_public().to_string();
-        let ci_public = ci_identity.to_public().to_string();
-        write_keys_pub(repo_dir.path(), &old_dev_public, &ci_public);
+            let key_path = secrets_home.join("keys").join(format!("{slug}.key"));
+            fs::create_dir_all(key_path.parent().unwrap()).unwrap();
+            fs::write(&key_path, format!("{old_dev_private}\n")).unwrap();
 
-        let key_path = home_dir
-            .join(".a8c-secrets/keys")
-            .join(format!("{slug}.key"));
-        fs::create_dir_all(key_path.parent().unwrap()).unwrap();
-        fs::write(&key_path, format!("{old_dev_private}\n")).unwrap();
+            let plaintext = b"rotate-me";
+            let ciphertext = encrypt_for_recipients(
+                &[old_dev_identity.to_public(), ci_identity.to_public()],
+                plaintext,
+            );
+            fs::write(
+                repo_dir.path().join(".a8c-secrets/secret.txt.age"),
+                ciphertext,
+            )
+            .unwrap();
 
-        let plaintext = b"rotate-me";
-        let ciphertext = encrypt_for_recipients(
-            &[old_dev_identity.to_public(), ci_identity.to_public()],
-            plaintext,
-        );
-        fs::write(
-            repo_dir.path().join(".a8c-secrets/secret.txt.age"),
-            ciphertext,
-        )
-        .unwrap();
+            let engine = AgeCrateEngine::new();
+            let old_dev_public_key = old_dev_identity.to_public();
 
-        let engine = AgeCrateEngine::new();
-        let old_dev_public_key = old_dev_identity.to_public();
+            apply_key_rotation(
+                &engine,
+                repo_dir.path(),
+                slug,
+                &old_dev_public_key,
+                &old_dev_identity,
+            )
+            .unwrap();
 
-        apply_key_rotation(
-            &engine,
-            repo_dir.path(),
-            slug,
-            &old_dev_public_key,
-            &old_dev_identity,
-        )
-        .unwrap();
-
-        let mode = fs::metadata(&key_path).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600, "rotated dev key file should be 0600");
+            let mode = fs::metadata(&key_path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600, "rotated dev key file should be 0600");
+        });
     }
 }

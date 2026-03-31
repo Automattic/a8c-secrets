@@ -78,9 +78,9 @@ COMMANDS
         status                            Show sync state of all files
 
     Key management:
-        keys show                         Display key info and dev/CI identification
+        keys show                         Display key paths and keys.pub recipients
         keys import                       Import private key from Secret Store
-        keys rotate --dev|--ci            Rotate a key pair, re-encrypt all files
+        keys rotate                       Rotate one keys.pub recipient (interactive), re-encrypt .age files
 
     Setup:
         setup init                        Initialize a8c-secrets in a repository
@@ -108,13 +108,16 @@ KEY MANAGEMENT
         a8c-secrets dev private key for <repo>
         a8c-secrets CI private key for <repo>
 
-    The tool identifies which key is "dev" by deriving the public key from
+    The tool identifies which key is yours by deriving the public key from
     your local private key and matching it against entries in keys.pub.
-    Comment labels (# dev, # ci) are for humans — the tool doesn't rely on them.
+    `keys show` prefixes that entry with 🔑 and prints a legend; other
+    recipient lines use spacing only so columns stay aligned.
+    Lines starting with # in keys.pub are treated as comments and ignored
+    (same as age recipient files); they are optional human notes only.
 
     Key rotation (employee offboarding):
-        1. a8c-secrets keys rotate --dev
-        2. Update Secret Store entry "a8c-secrets dev private key for <repo>" with the new dev private key
+        1. a8c-secrets keys rotate   # interactive: pick recipient, confirm, then follow printed steps
+        2. Update the appropriate Secret Store / CI secret with the new private key (as instructed)
         3. Rotate actual secret values (API keys, tokens) — manual step
         4. Commit updated keys.pub and .age files
         5. Team runs: a8c-secrets keys import && a8c-secrets decrypt

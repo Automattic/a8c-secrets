@@ -1,159 +1,466 @@
-use age::secrecy::ExposeSecret;
-use anyhow::{Context, Result};
+use std::path::Path;
 
-use crate::cli::RotateArgs;
+use age::secrecy::{ExposeSecret, SecretString};
+use anyhow::{Context, Result};
+use inquire::{Confirm, InquireError, Select};
+
+use super::{PUBLIC_KEY_LIST_LEGEND, PublicKeyListRow};
 use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::{CryptoEngine, derive_public_key};
+use crate::keys;
 
-fn identify_dev_ci_indices(public_keys: &[String], derived_public: &str) -> Result<(usize, usize)> {
-    if public_keys.len() != 2 {
-        anyhow::bail!(
-            "Expected exactly 2 public keys in keys.pub, found {}",
-            public_keys.len()
-        );
-    }
-
-    let dev_idx = public_keys
-        .iter()
-        .position(|pk| pk == derived_public)
-        .context(
-            "Local private key does not match any key in keys.pub. Import the correct key first.",
-        )?;
-    let ci_idx = 1 - dev_idx;
-    Ok((dev_idx, ci_idx))
+fn inquire_to_anyhow<T>(result: inquire::error::InquireResult<T>) -> Result<T> {
+    result.map_err(|e| {
+        if matches!(e, InquireError::OperationCanceled) {
+            anyhow::anyhow!("Aborted.")
+        } else {
+            anyhow::anyhow!("{e}")
+        }
+    })
 }
 
-/// Rotate either the dev or CI key and re-encrypt all repository secrets.
-///
-/// # Errors
-///
-/// Returns an error if repo/config/key discovery fails, key matching is
-/// invalid, or re-encryption reads/writes fail.
-pub fn run(crypto_engine: &dyn CryptoEngine, args: &RotateArgs) -> Result<()> {
-    let repo_root = config::find_repo_root()?;
-    let repo_config = config::load_repo_config(&repo_root)?;
-    let slug = &repo_config.repo;
+fn select_public_key_to_rotate(
+    public_keys: &[String],
+    public_key_from_decrypt_private_key: &str,
+) -> Result<PublicKeyListRow> {
+    let choices: Vec<PublicKeyListRow> = public_keys
+        .iter()
+        .map(|recipient| {
+            PublicKeyListRow::new(recipient.clone(), Some(public_key_from_decrypt_private_key))
+        })
+        .collect();
 
-    let private_key = config::get_private_key(slug)?;
-    let derived_public = derive_public_key(&private_key)?;
-    let public_keys = config::load_public_keys(&repo_root)?;
+    inquire_to_anyhow(
+        Select::new("Select which key to rotate", choices)
+            .without_filtering()
+            .prompt(),
+    )
+}
 
-    // Identify which key is dev (matches local private key) and which is ci
-    let (dev_idx, ci_idx) = identify_dev_ci_indices(&public_keys, &derived_public)?;
-
-    let (new_private, new_public) = crypto_engine.keygen()?;
-
-    // Build updated keys list
-    let mut updated_keys = public_keys.clone();
-    let target_label = if args.dev {
-        updated_keys[dev_idx].clone_from(&new_public);
-        "dev"
-    } else {
-        updated_keys[ci_idx].clone_from(&new_public);
-        "ci"
-    };
-
-    // Determine which is dev and which is ci in the output
-    let (dev_key, ci_key) = if dev_idx == 0 {
-        (&updated_keys[0], &updated_keys[1])
-    } else {
-        (&updated_keys[1], &updated_keys[0])
-    };
-
-    // Rewrite keys.pub with comments
-    let keys_pub_path = repo_root.join(REPO_SECRETS_DIR).join("keys.pub");
-    std::fs::write(
-        &keys_pub_path,
-        format!("# dev\n{dev_key}\n# ci\n{ci_key}\n"),
+fn confirm_rotation() -> Result<()> {
+    let ok = inquire_to_anyhow(
+        Confirm::new("Proceed with this key rotation?")
+            .with_default(false)
+            .with_help_message("y = continue, n or Enter = cancel")
+            .prompt(),
     )?;
+    if ok {
+        Ok(())
+    } else {
+        anyhow::bail!("Aborted.");
+    }
+}
 
-    // Re-encrypt all .age files with the updated public keys
-    let age_files = config::list_age_files(&repo_root)?;
+fn print_rotation_reminder() {
+    println!();
+    println!(
+        "Reminder: before you rotate the encryption keys used to encrypt your secret files, \
+         be sure to manually rotate the contents of those secret files first (e.g. your API keys \
+         and such that those secret files contain), so that people who had the old key and could \
+         decrypt secret files from past commits cannot use those secrets anymore."
+    );
+    println!();
+    println!("{PUBLIC_KEY_LIST_LEGEND}");
+    println!();
+}
+
+fn print_confirmation_plan(
+    slug: &str,
+    rotating_owned: bool,
+    keys_pub_path: &Path,
+    local_key_path: &Path,
+    secrets_dir: &Path,
+    age_files: &[String],
+    decrypted_dir_display: Option<String>,
+) {
+    println!();
+    println!("The tool will:");
+    println!(" - Generate a new key pair");
+    if rotating_owned {
+        println!(
+            " - Update `{}` with the new private key",
+            local_key_path.display()
+        );
+    }
+    println!(
+        " - Update `{}` to replace the chosen public key line (other lines and comments unchanged)",
+        keys_pub_path.display()
+    );
+    if age_files.is_empty() {
+        println!(
+            " - (No `.age` files under `{}` to re-encrypt)",
+            secrets_dir.display()
+        );
+    } else {
+        println!(
+            " - For each `.age` file under `{}`, decrypt ciphertext in memory with your current private key, then re-encrypt to the updated recipient list and write the file back",
+            secrets_dir.display()
+        );
+        for name in age_files {
+            println!("     - {name}.age");
+        }
+    }
+    println!(" - Print the new private key to stdout");
+    println!();
+    println!("After this, you will be expected to:");
+    if rotating_owned {
+        println!(
+            " - Update the Secret Store entry \"{}\" with the new private key",
+            keys::secret_store_entry_name(slug, false)
+        );
+        println!(" - Notify the team to run `a8c-secrets keys import` where needed");
+        println!(" - Commit the changes under `.a8c-secrets/` (e.g. keys.pub and *.age files)");
+    } else {
+        println!(
+            " - Update the Secret Store entry \"{}\" with the new private key",
+            keys::secret_store_entry_name(slug, true)
+        );
+        println!(
+            " - Update CI secrets for this repo (e.g. Buildkite `A8C_SECRETS_IDENTITY`, or anywhere the old private key was configured) with the new private key"
+        );
+        println!(" - Commit the changes under `.a8c-secrets/` (e.g. keys.pub and *.age files)");
+    }
+    if let Some(path) = decrypted_dir_display {
+        println!();
+        println!(
+            "Note: files under `{path}` are not updated by this command; run `a8c-secrets decrypt` after rotation if you rely on local plaintext copies."
+        );
+    }
+    println!();
+}
+
+/// Applies key rotation after interactive confirmation: new keypair, `keys.pub` update,
+/// re-encryption of `.age` files, optional local private key file update.
+///
+/// `old_public_key` must be exactly one of the recipient lines currently in `keys.pub` (as
+/// returned by [`keys::load_public_keys`]). Recipients used for re-encryption are read from
+/// disk again after updating `keys.pub`.
+///
+/// `private_key_for_decrypt` is the caller’s current age identity (typically from
+/// [`keys::get_private_key`]). It is used to decrypt existing `.age` files before re-encrypting
+/// them. When `old_public_key` is the public key derived from this same identity, the local
+/// key file is updated with the newly generated private key.
+///
+/// Used by [`run`] and by unit tests (inquire’s `Select`/`Confirm` prompts are not wired for
+/// non-interactive subprocess tests; see crate tests in this module).
+pub(crate) fn apply_key_rotation(
+    crypto_engine: &dyn CryptoEngine,
+    repo_root: &Path,
+    slug: &str,
+    old_public_key: &str,
+    private_key_for_decrypt: &SecretString,
+) -> Result<()> {
+    let public_key_from_decrypt_private_key = derive_public_key(private_key_for_decrypt)?;
+    let rotating_owned = old_public_key == public_key_from_decrypt_private_key;
+
+    let (new_private_key, new_public_key) = crypto_engine.keygen()?;
+
+    keys::replace_recipient_public_key_in_keys_pub(repo_root, old_public_key, &new_public_key)?;
+
+    let recipient_public_keys_after_rotation = keys::load_public_keys(repo_root)?;
+
     let secrets_dir = repo_root.join(REPO_SECRETS_DIR);
-
-    // We need a working private key to decrypt. After dev rotation, the OLD
-    // private key still works because we haven't replaced the .age files yet.
-    // After ci rotation, the dev private key still works (unchanged).
-    let decrypt_key = &private_key;
+    let age_files = config::list_age_files(repo_root)?;
 
     for name in &age_files {
         let age_path = secrets_dir.join(format!("{name}.age"));
         let ciphertext = std::fs::read(&age_path)?;
         let plaintext = crypto_engine
-            .decrypt(&ciphertext, decrypt_key)
+            .decrypt(&ciphertext, private_key_for_decrypt)
             .with_context(|| format!("Failed to decrypt {name} during re-encryption"))?;
-        let new_ciphertext = crypto_engine.encrypt(plaintext.as_slice(), &updated_keys)?;
+        let new_ciphertext =
+            crypto_engine.encrypt(plaintext.as_slice(), &recipient_public_keys_after_rotation)?;
         config::atomic_write(&age_path, &new_ciphertext)?;
         println!("  {name} — re-encrypted");
     }
 
-    // If rotating dev, save the new private key locally
-    if args.dev {
-        let key_path = config::save_private_key(slug, &new_private)?;
+    if rotating_owned {
+        let key_path = keys::save_private_key(slug, &new_private_key)?;
         println!();
         println!("Updated local private key at {}", key_path.display());
     }
 
     println!();
-    println!("Rotated {target_label} key.");
+    println!("Rotated the selected public key.");
     println!();
-    println!("--- New {target_label} private key ---");
-    println!("{}", new_private.expose_secret());
+    println!("--- New private key ---");
+    println!("{}", new_private_key.expose_secret());
     println!();
 
-    if args.dev {
-        println!("Next steps:");
-        println!(
-            "  1. Update Secret Store entry {} with the new dev private key",
-            config::secret_store_entry_name(slug, false)
-        );
-        println!("  2. Notify team to run `a8c-secrets keys import`");
-        println!("  3. Commit the updated keys.pub and .age files");
-    } else {
-        println!("Next steps:");
-        println!(
-            "  1. Update Secret Store entry {} with the new CI private key",
-            config::secret_store_entry_name(slug, true)
-        );
-        println!("  2. Update Buildkite A8C_SECRETS_IDENTITY secret");
-        println!("  3. Commit the updated keys.pub and .age files");
-    }
-
-    println!();
-    println!("NOTE: This does not rotate the actual secret values inside the files.");
+    println!("NOTE: This does not rotate the actual secret values inside the encrypted files.");
 
     Ok(())
 }
 
+/// Interactively rotate one recipient in `keys.pub` and re-encrypt `.age` files.
+///
+/// # Errors
+///
+/// Returns an error if repo/config/key discovery fails, the user aborts, or
+/// re-encryption reads/writes fail.
+pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
+    let repo_root = config::find_repo_root()?;
+    let repo_config = config::load_repo_config(&repo_root)?;
+    let slug = &repo_config.repo;
+
+    let private_key_for_decrypt = keys::get_private_key(slug)?;
+    let public_key_from_decrypt_private_key = derive_public_key(&private_key_for_decrypt)?;
+    let public_keys = keys::load_public_keys(&repo_root)?;
+
+    if !public_keys.contains(&public_key_from_decrypt_private_key) {
+        anyhow::bail!(
+            "Your local private key does not match any public key in keys.pub. \
+             Import a key that appears in keys.pub (run `a8c-secrets keys import`)."
+        );
+    }
+
+    print_rotation_reminder();
+
+    let selection =
+        select_public_key_to_rotate(&public_keys, &public_key_from_decrypt_private_key)?;
+
+    let keys_pub_path = keys::public_keys_path(&repo_root);
+    let local_key_path = keys::private_key_path(slug)?;
+    let secrets_dir = repo_root.join(REPO_SECRETS_DIR);
+    let age_files = config::list_age_files(&repo_root)?;
+    let decrypted_dir_display = config::decrypted_dir(slug)
+        .ok()
+        .map(|p| p.display().to_string());
+
+    print_confirmation_plan(
+        slug,
+        selection.matches_local_private_key,
+        &keys_pub_path,
+        &local_key_path,
+        &secrets_dir,
+        &age_files,
+        decrypted_dir_display,
+    );
+
+    confirm_rotation()?;
+
+    apply_key_rotation(
+        crypto_engine,
+        &repo_root,
+        slug,
+        selection.key.as_str(),
+        &private_key_for_decrypt,
+    )
+}
+
 #[cfg(test)]
 mod tests {
-    use super::identify_dev_ci_indices;
+    use std::fs;
+    use std::io::{Read, Write};
+    use std::sync::Mutex;
 
-    #[test]
-    fn identify_indices_when_dev_is_first() {
-        let keys = vec!["dev".to_string(), "ci".to_string()];
-        let (dev_idx, ci_idx) = identify_dev_ci_indices(&keys, "dev").unwrap();
-        assert_eq!((dev_idx, ci_idx), (0, 1));
+    use age::secrecy::{ExposeSecret, SecretString};
+
+    use super::apply_key_rotation;
+    use crate::config::REPO_SECRETS_DIR;
+    use crate::crypto::AgeCrateEngine;
+
+    static A8C_SECRETS_HOME_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    struct EnvVarRestore {
+        key: &'static str,
+        prev: Option<String>,
+    }
+
+    impl EnvVarRestore {
+        fn set(key: &'static str, value: &str) -> Self {
+            let prev = std::env::var(key).ok();
+            // SAFETY: `A8C_SECRETS_HOME_TEST_LOCK` serializes tests that touch this variable.
+            unsafe {
+                std::env::set_var(key, value);
+            }
+            Self { key, prev }
+        }
+    }
+
+    impl Drop for EnvVarRestore {
+        fn drop(&mut self) {
+            // SAFETY: same as `set`.
+            unsafe {
+                match &self.prev {
+                    Some(v) => std::env::set_var(self.key, v),
+                    None => std::env::remove_var(self.key),
+                }
+            }
+        }
+    }
+
+    fn encrypt_for_recipients(recipients: &[String], plaintext: &[u8]) -> Vec<u8> {
+        let recipients: Vec<age::x25519::Recipient> =
+            recipients.iter().map(|r| r.parse().unwrap()).collect();
+        let encryptor =
+            age::Encryptor::with_recipients(recipients.iter().map(|r| r as &dyn age::Recipient))
+                .expect("non-empty recipients");
+        let mut encrypted = vec![];
+        let mut writer = encryptor.wrap_output(&mut encrypted).unwrap();
+        writer.write_all(plaintext).unwrap();
+        writer.finish().unwrap();
+        encrypted
+    }
+
+    fn decrypt_with_private(ciphertext: &[u8], private_key: &str) -> anyhow::Result<Vec<u8>> {
+        let identity: age::x25519::Identity = private_key
+            .parse()
+            .map_err(|e| anyhow::anyhow!("invalid private key: {e}"))?;
+        let decryptor = age::Decryptor::new(ciphertext)?;
+        let mut reader = decryptor.decrypt(std::iter::once(&identity as &dyn age::Identity))?;
+        let mut out = vec![];
+        reader.read_to_end(&mut out)?;
+        Ok(out)
+    }
+
+    fn write_repo_config(repo_dir: &std::path::Path, slug: &str) {
+        let secrets_dir = repo_dir.join(REPO_SECRETS_DIR);
+        fs::create_dir_all(&secrets_dir).unwrap();
+        fs::write(
+            secrets_dir.join("config.toml"),
+            format!("repo = \"{slug}\"\n"),
+        )
+        .unwrap();
+    }
+
+    fn write_keys_pub(repo_dir: &std::path::Path, dev_public: &str, ci_public: &str) {
+        fs::write(
+            repo_dir.join(".a8c-secrets/keys.pub"),
+            format!("# dev\n{dev_public}\n# ci\n{ci_public}\n"),
+        )
+        .unwrap();
     }
 
     #[test]
-    fn identify_indices_when_dev_is_second() {
-        let keys = vec!["ci".to_string(), "dev".to_string()];
-        let (dev_idx, ci_idx) = identify_dev_ci_indices(&keys, "dev").unwrap();
-        assert_eq!((dev_idx, ci_idx), (1, 0));
+    fn apply_rotation_replaces_dev_key_and_reencrypts() {
+        let _lock = A8C_SECRETS_HOME_TEST_LOCK.lock().unwrap();
+
+        let temp = tempfile::tempdir().unwrap();
+        let home_dir = temp.path().join("home");
+        fs::create_dir_all(&home_dir).unwrap();
+        let _home_guard = EnvVarRestore::set(
+            "A8C_SECRETS_HOME",
+            home_dir.join(".a8c-secrets").to_str().unwrap(),
+        );
+
+        let repo_dir = tempfile::tempdir().unwrap();
+        let slug = "demo-repo";
+        write_repo_config(repo_dir.path(), slug);
+
+        let old_dev_identity = age::x25519::Identity::generate();
+        let ci_identity = age::x25519::Identity::generate();
+        let old_dev_private = old_dev_identity.to_string().expose_secret().to_string();
+        let old_dev_public = old_dev_identity.to_public().to_string();
+        let ci_public = ci_identity.to_public().to_string();
+        write_keys_pub(repo_dir.path(), &old_dev_public, &ci_public);
+
+        let key_path = home_dir
+            .join(".a8c-secrets/keys")
+            .join(format!("{slug}.key"));
+        fs::create_dir_all(key_path.parent().unwrap()).unwrap();
+        fs::write(&key_path, format!("{old_dev_private}\n")).unwrap();
+
+        let plaintext = b"rotate-me";
+        let ciphertext =
+            encrypt_for_recipients(&[old_dev_public.clone(), ci_public.clone()], plaintext);
+        let age_path = repo_dir.path().join(".a8c-secrets/secret.txt.age");
+        fs::write(&age_path, ciphertext).unwrap();
+
+        let engine = AgeCrateEngine::new();
+        let private_key_for_decrypt = SecretString::new(old_dev_private.clone().into());
+
+        apply_key_rotation(
+            &engine,
+            repo_dir.path(),
+            slug,
+            old_dev_public.as_str(),
+            &private_key_for_decrypt,
+        )
+        .expect("apply_key_rotation");
+
+        let keys_pub = fs::read_to_string(repo_dir.path().join(".a8c-secrets/keys.pub")).unwrap();
+        assert!(keys_pub.contains("# dev"));
+        assert!(keys_pub.contains("# ci"));
+        assert!(keys_pub.contains(&ci_public));
+        assert!(
+            !keys_pub.contains(&old_dev_public),
+            "old dev key should have been replaced"
+        );
+
+        let new_dev_private = fs::read_to_string(&key_path).unwrap().trim().to_string();
+        let new_identity: age::x25519::Identity = new_dev_private.parse().unwrap();
+        let new_dev_public = new_identity.to_public();
+        assert!(
+            keys_pub.contains(&new_dev_public.to_string()),
+            "keys.pub should contain new dev public key"
+        );
+
+        let new_ciphertext = fs::read(&age_path).unwrap();
+        assert_eq!(
+            decrypt_with_private(&new_ciphertext, &new_dev_private).unwrap(),
+            plaintext
+        );
+        assert!(
+            decrypt_with_private(&new_ciphertext, &old_dev_private).is_err(),
+            "old dev private key should no longer decrypt rotated file"
+        );
     }
 
+    #[cfg(unix)]
     #[test]
-    fn identify_indices_errors_for_invalid_key_count() {
-        let keys = vec!["only-one".to_string()];
-        let err = identify_dev_ci_indices(&keys, "only-one").unwrap_err();
-        assert!(format!("{err}").contains("Expected exactly 2 public keys"));
-    }
+    fn apply_rotation_sets_private_key_file_mode_0600() {
+        use std::os::unix::fs::PermissionsExt;
 
-    #[test]
-    fn identify_indices_errors_when_derived_key_missing() {
-        let keys = vec!["a".to_string(), "b".to_string()];
-        let err = identify_dev_ci_indices(&keys, "dev").unwrap_err();
-        assert!(format!("{err}").contains("does not match any key"));
+        let _lock = A8C_SECRETS_HOME_TEST_LOCK.lock().unwrap();
+
+        let temp = tempfile::tempdir().unwrap();
+        let home_dir = temp.path().join("home");
+        fs::create_dir_all(&home_dir).unwrap();
+        let _home_guard = EnvVarRestore::set(
+            "A8C_SECRETS_HOME",
+            home_dir.join(".a8c-secrets").to_str().unwrap(),
+        );
+
+        let repo_dir = tempfile::tempdir().unwrap();
+        let slug = "demo-repo";
+        write_repo_config(repo_dir.path(), slug);
+
+        let old_dev_identity = age::x25519::Identity::generate();
+        let ci_identity = age::x25519::Identity::generate();
+        let old_dev_private = old_dev_identity.to_string().expose_secret().to_string();
+        let old_dev_public = old_dev_identity.to_public().to_string();
+        let ci_public = ci_identity.to_public().to_string();
+        write_keys_pub(repo_dir.path(), &old_dev_public, &ci_public);
+
+        let key_path = home_dir
+            .join(".a8c-secrets/keys")
+            .join(format!("{slug}.key"));
+        fs::create_dir_all(key_path.parent().unwrap()).unwrap();
+        fs::write(&key_path, format!("{old_dev_private}\n")).unwrap();
+
+        let plaintext = b"rotate-me";
+        let ciphertext =
+            encrypt_for_recipients(&[old_dev_public.clone(), ci_public.clone()], plaintext);
+        fs::write(
+            repo_dir.path().join(".a8c-secrets/secret.txt.age"),
+            ciphertext,
+        )
+        .unwrap();
+
+        let engine = AgeCrateEngine::new();
+        let private_key_for_decrypt = SecretString::new(old_dev_private.into());
+
+        apply_key_rotation(
+            &engine,
+            repo_dir.path(),
+            slug,
+            old_dev_public.as_str(),
+            &private_key_for_decrypt,
+        )
+        .unwrap();
+
+        let mode = fs::metadata(&key_path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "rotated dev key file should be 0600");
     }
 }

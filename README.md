@@ -79,7 +79,7 @@ In the repo (committed):              On the developer's machine (never in git):
 
 **Why decrypt outside the working tree?** Decrypted secrets in `~/.a8c-secrets/<repo>/` can never be accidentally committed (even a `.gitignore` typo can't expose them) and are invisible to AI agents restricted to the repo working copy.
 
-**Two key pairs per repo (dev + CI).** The dev private key is shared by all developers via Secret Store. The CI private key is injected as a Buildkite secret via `A8C_SECRETS_IDENTITY`. Key identification uses public key derivation (matching your private key against `keys.pub`), not comment labels — so `# dev` / `# ci` comments are for humans only.
+**Two key pairs per repo (dev + CI).** The dev private key is shared by all developers via Secret Store. The CI private key is injected as a Buildkite secret via `A8C_SECRETS_IDENTITY`. Which key is yours is determined by public key derivation (matching your private key against `keys.pub`). Lines starting with `#` in `keys.pub` are comments and are ignored when reading recipients (same as age); they are optional for humans only.
 
 **Secret Store entry names** (human-created; replace `<repo>` with your repo slug): dev private key → `a8c-secrets dev private key for <repo>`; CI private key → `a8c-secrets CI private key for <repo>`.
 
@@ -95,13 +95,13 @@ In the repo (committed):              On the developer's machine (never in git):
 
 ## Key rotation
 
-On employee offboarding:
+On employee offboarding (or when rotating CI’s key):
 
-1. `a8c-secrets keys rotate --dev`
-2. Update the Secret Store entry `a8c-secrets dev private key for <repo>` with the new dev private key
-3. Rotate the actual secret values (API keys, tokens) — this is a manual step outside the tool's scope
-4. Commit updated `keys.pub` and `.age` files
-5. Team runs: `a8c-secrets keys import && a8c-secrets decrypt`
+1. Run `a8c-secrets keys rotate` — the tool lists recipients from `keys.pub`, you choose which to rotate, confirm, and it updates `keys.pub` (preserving comments), re-encrypts each `.age` file under `.a8c-secrets/` in the repo, and prints the new private key.
+2. Follow the printed next steps (Secret Store entry for the key you rotated, CI secrets if applicable, notify the team to `keys import` when the dev key changed).
+3. Rotate the actual secret values (API keys, tokens) — this is a manual step outside the tool's scope.
+4. Commit updated `keys.pub` and `.age` files.
+5. Team runs: `a8c-secrets keys import && a8c-secrets decrypt` where needed.
 
 ## Environment variables
 

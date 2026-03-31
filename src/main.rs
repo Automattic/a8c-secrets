@@ -5,6 +5,7 @@ mod cli;
 mod commands;
 mod config;
 mod crypto;
+mod keys;
 mod manual;
 mod permissions;
 
@@ -27,7 +28,7 @@ fn main() -> Result<()> {
         cli::Command::Keys(sub) => match sub.command {
             cli::KeysCommand::Show => commands::keys::show::run(),
             cli::KeysCommand::Import => commands::keys::import::run(),
-            cli::KeysCommand::Rotate(args) => commands::keys::rotate::run(&crypto_engine, &args),
+            cli::KeysCommand::Rotate => commands::keys::rotate::run(&crypto_engine),
         },
         cli::Command::Setup(sub) => match sub.command {
             cli::SetupCommand::Init => commands::setup::init::run(&crypto_engine),

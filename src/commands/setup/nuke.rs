@@ -3,6 +3,7 @@ use std::io::{self, Write};
 use anyhow::Result;
 
 use crate::config::{self, REPO_SECRETS_DIR};
+use crate::keys;
 
 /// Remove repo and local `a8c-secrets` data for the current repository.
 ///
@@ -16,7 +17,7 @@ pub fn run() -> Result<()> {
     let slug = &repo_config.repo;
 
     let secrets_dir = repo_root.join(REPO_SECRETS_DIR);
-    let key_path = config::private_key_path(slug)?;
+    let key_path = keys::private_key_path(slug)?;
     let decrypted = config::decrypted_dir(slug)?;
 
     println!("This will permanently delete:");
@@ -63,8 +64,8 @@ pub fn run() -> Result<()> {
     println!();
     println!("Reminders:");
     println!("  - Remove Secret Store entries for this repo if no longer needed:");
-    println!("      {}", config::secret_store_entry_name(slug, false));
-    println!("      {}", config::secret_store_entry_name(slug, true));
+    println!("      {}", keys::secret_store_entry_name(slug, false));
+    println!("      {}", keys::secret_store_entry_name(slug, true));
     println!("  - Remove the Buildkite A8C_SECRETS_IDENTITY secret if applicable");
     println!("  - Commit the deletion of {REPO_SECRETS_DIR}/");
 

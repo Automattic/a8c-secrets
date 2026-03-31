@@ -4,6 +4,7 @@ use anyhow::Result;
 
 use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::{CryptoEngine, derive_public_key};
+use crate::keys;
 use zeroize::Zeroizing;
 
 fn collect_all_files(
@@ -29,7 +30,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
 
     println!("Repo: {slug}");
 
-    let public_keys_result = config::load_public_keys(&repo_root);
+    let public_keys_result = keys::load_public_keys(&repo_root);
     match &public_keys_result {
         Ok(keys) => {
             println!(
@@ -43,7 +44,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
         }
     }
 
-    let private_key = if let Ok(key) = config::get_private_key(slug) {
+    let private_key = if let Ok(key) = keys::get_private_key(slug) {
         match &public_keys_result {
             Ok(public_keys) => match derive_public_key(&key) {
                 Ok(derived) => {

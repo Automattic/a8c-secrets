@@ -1,7 +1,9 @@
 use anyhow::Result;
 
-use crate::config::{self, REPO_SECRETS_DIR};
+use super::{PUBLIC_KEY_LIST_LEGEND, PublicKeyListRow};
+use crate::config;
 use crate::crypto::derive_public_key;
+use crate::keys;
 
 /// Display local/private key status and repository public keys.
 ///
@@ -15,10 +17,10 @@ pub fn run() -> Result<()> {
     let slug = &repo_config.repo;
 
     // Private key info
-    let key_path = config::private_key_path(slug)?;
+    let key_path = keys::private_key_path(slug)?;
     println!("Private key: {}", key_path.display());
 
-    let private_key = if let Ok(key) = config::get_private_key(slug) {
+    let private_key = if let Ok(key) = keys::get_private_key(slug) {
         println!("Status:      configured");
         Some(key)
     } else {
@@ -37,24 +39,17 @@ pub fn run() -> Result<()> {
 
     println!();
 
-    // Read keys.pub with comments for labels
-    let keys_pub_path = repo_root.join(REPO_SECRETS_DIR).join("keys.pub");
-    let content = std::fs::read_to_string(&keys_pub_path)?;
+    let keys_pub_path = keys::public_keys_path(&repo_root);
+    let public_keys = keys::load_public_keys(&repo_root)?;
 
     println!("Public keys ({}):", keys_pub_path.display());
-    let mut current_label: Option<String> = None;
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with('#') {
-            current_label = Some(trimmed.trim_start_matches('#').trim().to_string());
-        } else if !trimmed.is_empty() {
-            let label = current_label.take().unwrap_or_default();
-            let marker = match &derived_public {
-                Some(derived) if derived == trimmed => " <-- your key",
-                _ => "",
-            };
-            println!("  {trimmed}  ({label}){marker}");
-        }
+    println!("{PUBLIC_KEY_LIST_LEGEND}");
+    println!();
+    for recipient in public_keys {
+        println!(
+            "{}",
+            PublicKeyListRow::new(recipient, derived_public.as_deref())
+        );
     }
 
     Ok(())

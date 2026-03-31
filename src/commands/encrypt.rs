@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use crate::cli::EncryptArgs;
 use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::CryptoEngine;
+use crate::keys;
 use zeroize::Zeroizing;
 
 fn should_attempt_smart_compare(force: bool, has_private_key: bool, age_exists: bool) -> bool {
@@ -35,7 +36,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
     let repo_config = config::load_repo_config(&repo_root)?;
     let slug = &repo_config.repo;
 
-    let public_keys = config::load_public_keys(&repo_root)?;
+    let public_keys = keys::load_public_keys(&repo_root)?;
 
     let secrets_dir = repo_root.join(REPO_SECRETS_DIR);
     let local_dir = config::decrypted_dir(slug)?;
@@ -75,7 +76,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
     let private_key = if args.force {
         None
     } else {
-        match config::get_private_key(slug) {
+        match keys::get_private_key(slug) {
             Ok(key) => Some(key),
             Err(e) => {
                 eprintln!("Warning: Cannot perform smart comparison — {e}");

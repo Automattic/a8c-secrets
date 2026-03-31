@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use crate::cli::EditArgs;
 use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::CryptoEngine;
+use crate::keys;
 use crate::permissions;
 use zeroize::Zeroizing;
 
@@ -28,7 +29,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
     let repo_config = config::load_repo_config(&repo_root)?;
     let slug = &repo_config.repo;
     config::validate_secret_basename(&args.file)?;
-    let public_keys = config::load_public_keys(&repo_root)?;
+    let public_keys = keys::load_public_keys(&repo_root)?;
 
     let local_dir = config::decrypted_dir(slug)?;
     std::fs::create_dir_all(&local_dir)?;

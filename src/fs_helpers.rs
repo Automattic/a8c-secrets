@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use std::io::Write;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 pub(crate) use crate::models::{RepoIdentifier, SecretFileName};
 
@@ -138,39 +138,6 @@ pub(crate) fn list_decrypted_files(
     Ok(names)
 }
 
-/// Validate that `name` is exactly one non-empty filesystem path segment.
-///
-/// Shared by [`RepoIdentifier`] and [`SecretFileName`] constructors so both
-/// model types enforce a single-component, traversal-safe name invariant.
-pub(crate) fn validate_single_path_segment(name: &str, what: &'static str) -> Result<()> {
-    if name.is_empty() {
-        anyhow::bail!("{what} cannot be empty");
-    }
-    if name.contains('\0') {
-        anyhow::bail!("{what} cannot contain NUL bytes");
-    }
-    if name.contains('\\') {
-        anyhow::bail!("{what} must not contain path separators");
-    }
-    let path = Path::new(name);
-    let mut components = path.components();
-    let first = components
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("{what} cannot be empty"))?;
-    if components.next().is_some() {
-        anyhow::bail!("{what} must be a single file name (no paths or `..`)");
-    }
-    match first {
-        Component::Normal(os) => {
-            if os.to_str().is_none() {
-                anyhow::bail!("{what} must be valid Unicode");
-            }
-            Ok(())
-        }
-        _ => anyhow::bail!("{what} must be a single file name (no paths or `..`)"),
-    }
-}
-
 /// Write content atomically: write to a temp file then rename.
 ///
 /// Temporary files are created in the destination's parent directory so secret
@@ -254,7 +221,7 @@ mod tests {
         // Temp files used during atomic write should not remain in the target directory.
         let entries: Vec<_> = fs::read_dir(dir.path())
             .unwrap()
-            .filter_map(|e| e.ok())
+            .filter_map(Result::ok)
             .collect();
         assert_eq!(entries.len(), 1, "unexpected extra files left in temp dir");
         assert_eq!(entries[0].file_name().to_str(), Some("output.txt"));

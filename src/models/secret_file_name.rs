@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::fmt;
 use std::str::FromStr;
 
-use crate::fs_helpers::validate_single_path_segment;
+use crate::models::validation_helpers::validate_single_path_segment;
 
 /// Validated secret file name (single flat path segment).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

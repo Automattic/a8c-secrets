@@ -228,7 +228,6 @@ pub enum SetupCommand {
     #[command(long_about = "\
 Initialize a8c-secrets in the current git repository.
 
-Creates .a8c-secrets/keys.pub, generates both dev and CI
 Creates .a8c-secrets/keys.pub, generates both dev and CI key pairs, and saves
 the dev private key locally. Derives the repo identifier from git remote `origin`
 and fails if auto-detection is unavailable.")]

@@ -9,7 +9,7 @@ pub(crate) fn validate_single_path_segment(name: &str, what: &'static str) -> Re
     if name.contains('\0') {
         anyhow::bail!("{what} cannot contain NUL bytes");
     }
-    if name.contains('\\') {
+    if name.contains('/') || name.contains('\\') {
         anyhow::bail!("{what} must not contain path separators");
     }
     let path = Path::new(name);

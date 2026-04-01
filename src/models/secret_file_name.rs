@@ -71,6 +71,8 @@ mod tests {
     #[test]
     fn secret_file_name_try_from_rejects_path_separators() {
         assert!(SecretFileName::try_from("foo/bar").is_err());
+        assert!(SecretFileName::try_from("foo/").is_err());
+        assert!(SecretFileName::try_from("foo//").is_err());
         assert!(SecretFileName::try_from("../secret").is_err());
         assert!(SecretFileName::try_from("a\\b").is_err());
     }

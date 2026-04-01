@@ -2,8 +2,8 @@ use std::io::{self, IsTerminal};
 
 use anyhow::{Context, Result};
 
-use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::CryptoEngine;
+use crate::fs_helpers::{self, REPO_SECRETS_DIR};
 use crate::keys;
 use crate::permissions;
 
@@ -20,7 +20,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
         );
     }
 
-    let repo_root = config::find_repo_root().context(
+    let repo_root = fs_helpers::find_repo_root().context(
         "Failed to determine git repository root. Run this command from inside a git checkout.",
     )?;
     let secrets_dir = repo_root.join(REPO_SECRETS_DIR);
@@ -32,7 +32,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
         );
     }
 
-    let repo_identifier = config::RepoIdentifier::auto_detect()
+    let repo_identifier = fs_helpers::RepoIdentifier::auto_detect()
         .context("Failed to auto-detect repo identifier from git remote `origin`")?;
 
     // Generate dev and CI key pairs
@@ -54,7 +54,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     let key_path = keys::save_private_key(&repo_identifier, &dev_private)?;
 
     // Create the decrypted files directory
-    let decrypted = config::decrypted_dir(&repo_identifier)?;
+    let decrypted = fs_helpers::decrypted_dir(&repo_identifier)?;
     std::fs::create_dir_all(&decrypted)?;
     permissions::set_secure_dir_permissions(&decrypted)?;
 

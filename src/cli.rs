@@ -1,3 +1,4 @@
+use crate::models::SecretFileName;
 use clap::{Parser, Subcommand};
 use clap_complete::Shell;
 
@@ -150,7 +151,7 @@ pub struct DecryptArgs {
 #[derive(Debug, clap::Args)]
 pub struct EncryptArgs {
     /// Specific files to encrypt. If omitted, considers all files.
-    pub files: Vec<String>,
+    pub files: Vec<SecretFileName>,
 
     /// Skip smart comparison and re-encrypt unconditionally.
     /// Use after key rotation.
@@ -161,7 +162,7 @@ pub struct EncryptArgs {
 #[derive(Debug, clap::Args)]
 pub struct EditArgs {
     /// Name of the secret file to edit (e.g. "google-services.json")
-    pub file: String,
+    pub file: SecretFileName,
 }
 
 #[derive(Debug, clap::Args)]
@@ -171,7 +172,7 @@ pub struct RmArgs {
     pub non_interactive: bool,
 
     /// Name of the secret file to remove
-    pub file: String,
+    pub file: SecretFileName,
 }
 
 // -- Keys subcommands --
@@ -296,7 +297,13 @@ mod tests {
         let cli = parse(&["encrypt", "--force", "a.json", "b.yml"]).unwrap();
         if let Command::Encrypt(args) = cli.command {
             assert!(args.force);
-            assert_eq!(args.files, vec!["a.json", "b.yml"]);
+            assert_eq!(
+                args.files,
+                vec![
+                    SecretFileName::try_from("a.json").unwrap(),
+                    SecretFileName::try_from("b.yml").unwrap(),
+                ]
+            );
         } else {
             panic!("expected Encrypt");
         }
@@ -317,7 +324,7 @@ mod tests {
     fn parse_edit() {
         let cli = parse(&["edit", "secret.json"]).unwrap();
         if let Command::Edit(args) = cli.command {
-            assert_eq!(args.file, "secret.json");
+            assert_eq!(args.file, SecretFileName::try_from("secret.json").unwrap());
         } else {
             panic!("expected Edit");
         }
@@ -334,7 +341,7 @@ mod tests {
         let cli = parse(&["rm", "--non-interactive", "secret.json"]).unwrap();
         if let Command::Rm(args) = cli.command {
             assert!(args.non_interactive);
-            assert_eq!(args.file, "secret.json");
+            assert_eq!(args.file, SecretFileName::try_from("secret.json").unwrap());
         } else {
             panic!("expected Rm");
         }

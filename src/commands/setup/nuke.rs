@@ -3,7 +3,7 @@ use std::io::IsTerminal;
 use anyhow::Result;
 use inquire::Text;
 
-use crate::config::{self, REPO_SECRETS_DIR};
+use crate::fs_helpers::{self, REPO_SECRETS_DIR};
 use crate::keys;
 
 /// Remove repo and local `a8c-secrets` data for the current repository.
@@ -17,12 +17,12 @@ pub fn run() -> Result<()> {
         anyhow::bail!("`a8c-secrets setup nuke` must run in an interactive terminal (TTY).");
     }
 
-    let repo_root = config::find_repo_root()?;
-    let repo_identifier = config::RepoIdentifier::auto_detect()?;
+    let repo_root = fs_helpers::find_repo_root()?;
+    let repo_identifier = fs_helpers::RepoIdentifier::auto_detect()?;
 
     let secrets_dir = repo_root.join(REPO_SECRETS_DIR);
     let key_path = keys::private_key_path(&repo_identifier)?;
-    let decrypted = config::decrypted_dir(&repo_identifier)?;
+    let decrypted = fs_helpers::decrypted_dir(&repo_identifier)?;
 
     println!("This will permanently delete:");
     println!(

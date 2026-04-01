@@ -649,18 +649,13 @@ fn keys_rotate_requires_interactive_tty() {
     let repo_dir = temp.path().join("repo");
     fs::create_dir_all(&repo_dir).unwrap();
 
-    let mut child = std::process::Command::new(cargo_bin_exe())
+    let child = std::process::Command::new(cargo_bin_exe())
         .current_dir(&repo_dir)
         .args(["keys", "rotate"])
-        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .expect("spawn keys rotate");
-
-    if let Some(mut stdin) = child.stdin.take() {
-        writeln!(stdin).unwrap();
-    }
 
     let out = child
         .wait_with_output()

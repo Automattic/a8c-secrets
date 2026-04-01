@@ -819,7 +819,7 @@ fn keys_import_writes_private_key_from_stdin() {
 }
 
 #[test]
-fn decrypt_non_interactive_removes_orphan_local_files() {
+fn decrypt_non_interactive_removes_orphan_decrypted_files() {
     let temp = tempfile::tempdir().unwrap();
     let repo_dir = temp.path().join("repo");
     let home_dir = temp.path().join("home");
@@ -843,7 +843,7 @@ fn decrypt_non_interactive_removes_orphan_local_files() {
     );
     fs::write(repo_dir.join(".a8c-secrets/secret.json.age"), ciphertext).unwrap();
 
-    let local_dir = secrets_home(&home_dir).join(repo_identifier(repo_name));
+    let decrypted_dir = secrets_home(&home_dir).join(repo_identifier(repo_name));
 
     configured_command(&repo_dir, &home_dir)
         .args(["decrypt", "--non-interactive"])
@@ -851,8 +851,8 @@ fn decrypt_non_interactive_removes_orphan_local_files() {
         .assert()
         .success();
 
-    fs::write(local_dir.join("stale.toml"), b"orphan-plaintext").unwrap();
-    assert!(local_dir.join("stale.toml").exists());
+    fs::write(decrypted_dir.join("stale.toml"), b"orphan-plaintext").unwrap();
+    assert!(decrypted_dir.join("stale.toml").exists());
 
     let assert = configured_command(&repo_dir, &home_dir)
         .args(["decrypt", "--non-interactive"])
@@ -866,10 +866,13 @@ fn decrypt_non_interactive_removes_orphan_local_files() {
         "expected orphan notice in stdout: {out}"
     );
     assert!(
-        !local_dir.join("stale.toml").exists(),
-        "orphan local file should be removed in non-interactive mode"
+        !decrypted_dir.join("stale.toml").exists(),
+        "orphan decrypted file should be removed in non-interactive mode"
     );
-    assert_eq!(fs::read(local_dir.join("secret.json")).unwrap(), plaintext);
+    assert_eq!(
+        fs::read(decrypted_dir.join("secret.json")).unwrap(),
+        plaintext
+    );
 }
 
 #[test]
@@ -1020,7 +1023,7 @@ fn encrypt_warns_when_existing_age_cannot_be_decrypted_for_comparison() {
 }
 
 #[test]
-fn status_shows_sync_modified_encrypted_only_and_local_only() {
+fn status_shows_sync_modified_encrypted_only_and_decrypted_only() {
     let temp = tempfile::tempdir().unwrap();
     let repo_dir = temp.path().join("repo");
     let home_dir = temp.path().join("home");
@@ -1037,8 +1040,8 @@ fn status_shows_sync_modified_encrypted_only_and_local_only() {
     let ci_public = ci_identity.to_public().to_string();
     write_keys_pub(&repo_dir, &dev_public, &ci_public);
 
-    let local_dir = secrets_home(&home_dir).join(repo_identifier(repo_name));
-    fs::create_dir_all(&local_dir).unwrap();
+    let decrypted_dir = secrets_home(&home_dir).join(repo_identifier(repo_name));
+    fs::create_dir_all(&decrypted_dir).unwrap();
 
     let in_sync_plain = b"same";
     let ct_in_sync = encrypt_for(
@@ -1046,14 +1049,14 @@ fn status_shows_sync_modified_encrypted_only_and_local_only() {
         in_sync_plain,
     );
     fs::write(repo_dir.join(".a8c-secrets/in_sync.txt.age"), ct_in_sync).unwrap();
-    fs::write(local_dir.join("in_sync.txt"), in_sync_plain).unwrap();
+    fs::write(decrypted_dir.join("in_sync.txt"), in_sync_plain).unwrap();
 
     let ct_mod = encrypt_for(
         &[dev_identity.to_public(), ci_identity.to_public()],
         b"age-plain",
     );
     fs::write(repo_dir.join(".a8c-secrets/mod.txt.age"), ct_mod).unwrap();
-    fs::write(local_dir.join("mod.txt"), b"local-plain-different").unwrap();
+    fs::write(decrypted_dir.join("mod.txt"), b"local-plain-different").unwrap();
 
     let ct_only = encrypt_for(
         &[dev_identity.to_public(), ci_identity.to_public()],
@@ -1061,7 +1064,7 @@ fn status_shows_sync_modified_encrypted_only_and_local_only() {
     );
     fs::write(repo_dir.join(".a8c-secrets/only_age.txt.age"), ct_only).unwrap();
 
-    fs::write(local_dir.join("only_local.txt"), b"no-age-counterpart").unwrap();
+    fs::write(decrypted_dir.join("only_local.txt"), b"no-age-counterpart").unwrap();
 
     let assert = configured_command(&repo_dir, &home_dir)
         .arg("status")
@@ -1075,7 +1078,7 @@ fn status_shows_sync_modified_encrypted_only_and_local_only() {
         "expected in-sync line: {stdout}"
     );
     assert!(
-        stdout.contains("modified locally") && stdout.contains("mod.txt"),
+        stdout.contains("modified decrypted copy") && stdout.contains("mod.txt"),
         "expected modified line: {stdout}"
     );
     assert!(
@@ -1083,8 +1086,8 @@ fn status_shows_sync_modified_encrypted_only_and_local_only() {
         "expected encrypted-only line: {stdout}"
     );
     assert!(
-        stdout.contains("local only") && stdout.contains("only_local.txt"),
-        "expected local-only line: {stdout}"
+        stdout.contains("decrypted only") && stdout.contains("only_local.txt"),
+        "expected decrypted-only line: {stdout}"
     );
 }
 
@@ -1174,7 +1177,10 @@ fn rm_fails_without_non_interactive_flag_when_not_tty() {
         combined.contains("interactive terminal (TTY)") && combined.contains("--non-interactive"),
         "expected non-TTY error in output: {combined}"
     );
-    assert!(local_path.exists(), "local file should remain on failed rm");
+    assert!(
+        local_path.exists(),
+        "decrypted file should remain on failed rm"
+    );
     assert!(age_path.exists(), ".age file should remain on failed rm");
 }
 

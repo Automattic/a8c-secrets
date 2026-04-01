@@ -109,7 +109,7 @@ fn print_confirmation_plan(
     if let Some(path) = decrypted_dir_display {
         println!();
         println!(
-            "Note: files under `{path}` are not updated by this command; run `a8c-secrets decrypt` after rotation if you rely on local plaintext copies."
+            "Note: files under `{path}` are not updated by this command; run `a8c-secrets decrypt` after rotation if you rely on decrypted plaintext copies."
         );
     }
     println!();

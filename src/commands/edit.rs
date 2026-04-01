@@ -30,7 +30,7 @@ fn command_for_editor(editor: &str, file: &Path) -> Result<std::process::Command
     Ok(cmd)
 }
 
-/// Open a local secret file in an editor and re-encrypt if it changed.
+/// Open a decrypted secret file in an editor and re-encrypt if it changed.
 ///
 /// New files and post-edit content get the same owner-only file permissions as
 /// [`decrypt`](`crate::commands::decrypt`) (`0o600` on Unix, owner-only DACL on Windows).
@@ -46,13 +46,13 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
     config::validate_secret_basename(&args.file)?;
     let public_keys = keys::load_public_keys(&repo_root)?;
 
-    let local_dir = config::decrypted_dir(&repo_identifier)?;
-    std::fs::create_dir_all(&local_dir)?;
-    permissions::set_secure_dir_permissions(&local_dir)?;
-    let local_path = local_dir.join(&args.file);
+    let decrypted_dir = config::decrypted_dir(&repo_identifier)?;
+    std::fs::create_dir_all(&decrypted_dir)?;
+    permissions::set_secure_dir_permissions(&decrypted_dir)?;
+    let decrypted_path = decrypted_dir.join(&args.file);
 
     // If file doesn't exist, prompt to create
-    if !local_path.exists() {
+    if !decrypted_path.exists() {
         if !Confirm::new(&format!("'{}' does not exist. Create it?", args.file))
             .with_default(false)
             .prompt()
@@ -60,11 +60,11 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
         {
             anyhow::bail!("Aborted.");
         }
-        std::fs::write(&local_path, "")?;
-        permissions::set_secure_file_permissions(&local_path)?;
+        std::fs::write(&decrypted_path, "")?;
+        permissions::set_secure_file_permissions(&decrypted_path)?;
     }
 
-    let before = Zeroizing::new(std::fs::read(&local_path)?);
+    let before = Zeroizing::new(std::fs::read(&decrypted_path)?);
 
     // Open in $EDITOR (split into program + args; see `command_for_editor`)
     let editor_spec = std::env::var("EDITOR")
@@ -72,18 +72,18 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(default_editor);
-    let status = command_for_editor(&editor_spec, &local_path)?
+    let status = command_for_editor(&editor_spec, &decrypted_path)?
         .status()
         .with_context(|| format!("Failed to launch editor: {editor_spec}"))?;
 
     // Match `decrypt`: editors often leave world-readable files (umask); tighten after save.
-    permissions::set_secure_file_permissions(&local_path)?;
+    permissions::set_secure_file_permissions(&decrypted_path)?;
 
     if !status.success() {
         anyhow::bail!("Editor exited with non-zero status");
     }
     // Hash after editing
-    let after = Zeroizing::new(std::fs::read(&local_path)?);
+    let after = Zeroizing::new(std::fs::read(&decrypted_path)?);
 
     if before.as_slice() == after.as_slice() {
         println!("No changes detected.");

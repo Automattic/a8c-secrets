@@ -5,7 +5,7 @@ use std::io::IsTerminal;
 use crate::cli::RmArgs;
 use crate::config::{self, REPO_SECRETS_DIR};
 
-/// Remove a secret file from both local plaintext storage and repo ciphertext.
+/// Remove a secret file from both decrypted storage and repo ciphertext.
 ///
 /// # Errors
 ///
@@ -16,22 +16,25 @@ pub fn run(args: &RmArgs) -> Result<()> {
     let repo_identifier = config::RepoIdentifier::auto_detect()?;
     config::validate_secret_basename(&args.file)?;
 
-    let local_path = config::decrypted_dir(&repo_identifier)?.join(&args.file);
+    let decrypted_path = config::decrypted_dir(&repo_identifier)?.join(&args.file);
     let age_path = repo_root
         .join(REPO_SECRETS_DIR)
         .join(format!("{}.age", args.file));
 
-    let local_exists = local_path.exists();
+    let decrypted_exists = decrypted_path.exists();
     let age_exists = age_path.exists();
 
-    if !local_exists && !age_exists {
-        anyhow::bail!("'{}' not found (checked both local and .age)", args.file);
+    if !decrypted_exists && !age_exists {
+        anyhow::bail!(
+            "'{}' not found (checked both decrypted and .age)",
+            args.file
+        );
     }
 
     // Show what will be deleted
     println!("Will delete:");
-    if local_exists {
-        println!("  {}", local_path.display());
+    if decrypted_exists {
+        println!("  {}", decrypted_path.display());
     }
     if age_exists {
         println!("  {}", age_path.display());
@@ -52,8 +55,8 @@ pub fn run(args: &RmArgs) -> Result<()> {
         }
     }
 
-    if local_exists {
-        std::fs::remove_file(&local_path)?;
+    if decrypted_exists {
+        std::fs::remove_file(&decrypted_path)?;
     }
     if age_exists {
         std::fs::remove_file(&age_path)?;

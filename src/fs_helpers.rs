@@ -2,12 +2,12 @@ use anyhow::{Context, Result};
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
-pub use crate::models::{RepoIdentifier, SecretFileName};
+pub(crate) use crate::models::{RepoIdentifier, SecretFileName};
 
 /// Name of the in-repo config directory.
-pub const REPO_SECRETS_DIR: &str = ".a8c-secrets";
+pub(crate) const REPO_SECRETS_DIR: &str = ".a8c-secrets";
 /// Name of the local home directory used to store private/decrypted secrets.
-pub const HOME_SECRETS_DIR: &str = ".a8c-secrets";
+pub(crate) const HOME_SECRETS_DIR: &str = ".a8c-secrets";
 
 /// Locate the git repository root from the current directory.
 ///
@@ -15,7 +15,7 @@ pub const HOME_SECRETS_DIR: &str = ".a8c-secrets";
 ///
 /// Returns an error if git is unavailable, the current directory is not in a
 /// git repository/worktree, or the resolved path cannot be converted to UTF-8.
-pub fn find_repo_root() -> Result<PathBuf> {
+pub(crate) fn find_repo_root() -> Result<PathBuf> {
     let output = std::process::Command::new("git")
         .args(["rev-parse", "--show-toplevel"])
         .output()
@@ -42,7 +42,7 @@ pub fn find_repo_root() -> Result<PathBuf> {
 /// # Errors
 ///
 /// Returns an error if the user's home directory cannot be determined.
-pub fn secrets_home() -> Result<PathBuf> {
+pub(crate) fn secrets_home() -> Result<PathBuf> {
     if let Ok(override_path) = std::env::var("A8C_SECRETS_HOME") {
         return Ok(PathBuf::from(override_path));
     }
@@ -55,7 +55,7 @@ pub fn secrets_home() -> Result<PathBuf> {
 /// # Errors
 ///
 /// Returns an error if the local secrets home directory cannot be determined.
-pub fn decrypted_dir(repo_identifier: &RepoIdentifier) -> Result<PathBuf> {
+pub(crate) fn decrypted_dir(repo_identifier: &RepoIdentifier) -> Result<PathBuf> {
     Ok(secrets_home()?.join(repo_identifier.as_path()))
 }
 
@@ -70,7 +70,7 @@ pub fn decrypted_dir(repo_identifier: &RepoIdentifier) -> Result<PathBuf> {
 /// Returns an error if the secrets directory exists but cannot be read, or if
 /// an `.age` file has an invalid stem. Non-file `.age` entries are skipped with
 /// a warning.
-pub fn list_age_files(repo_root: &Path) -> Result<Vec<SecretFileName>> {
+pub(crate) fn list_age_files(repo_root: &Path) -> Result<Vec<SecretFileName>> {
     let dir = repo_root.join(REPO_SECRETS_DIR);
     let mut names = Vec::new();
     if !dir.exists() {
@@ -111,7 +111,9 @@ pub fn list_age_files(repo_root: &Path) -> Result<Vec<SecretFileName>> {
 ///
 /// Returns an error if the decrypted directory exists but cannot be read,
 /// or if a file name is not a valid flat basename.
-pub fn list_decrypted_files(repo_identifier: &RepoIdentifier) -> Result<Vec<SecretFileName>> {
+pub(crate) fn list_decrypted_files(
+    repo_identifier: &RepoIdentifier,
+) -> Result<Vec<SecretFileName>> {
     let dir = decrypted_dir(repo_identifier)?;
     let mut names = Vec::new();
     if !dir.exists() {
@@ -136,6 +138,10 @@ pub fn list_decrypted_files(repo_identifier: &RepoIdentifier) -> Result<Vec<Secr
     Ok(names)
 }
 
+/// Validate that `name` is exactly one non-empty filesystem path segment.
+///
+/// Shared by [`RepoIdentifier`] and [`SecretFileName`] constructors so both
+/// model types enforce a single-component, traversal-safe name invariant.
 pub(crate) fn validate_single_path_segment(name: &str, what: &'static str) -> Result<()> {
     if name.is_empty() {
         anyhow::bail!("{what} cannot be empty");
@@ -173,7 +179,7 @@ pub(crate) fn validate_single_path_segment(name: &str, what: &'static str) -> Re
 /// # Errors
 ///
 /// Returns an error if the temp file cannot be created, written, or persisted.
-pub fn atomic_write(path: &Path, content: &[u8]) -> Result<()> {
+pub(crate) fn atomic_write(path: &Path, content: &[u8]) -> Result<()> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let mut tmp = tempfile::NamedTempFile::new_in(parent)
         .with_context(|| format!("Failed to create temp file in {}", parent.display()))?;

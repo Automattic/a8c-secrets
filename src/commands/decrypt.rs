@@ -29,6 +29,12 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
 
     let repo_root = config::find_repo_root()?;
     let repo_identifier = config::RepoIdentifier::auto_detect()?;
+    let age_files: BTreeSet<String> = config::list_age_files(&repo_root)?.into_iter().collect();
+
+    if age_files.is_empty() {
+        println!("No .age files found in {REPO_SECRETS_DIR}/");
+        return Ok(());
+    }
 
     // Get or prompt for private key
     let private_key = match keys::get_private_key(&repo_identifier) {
@@ -39,13 +45,6 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
         }
         Err(e) => return Err(e),
     };
-
-    let age_files: BTreeSet<String> = config::list_age_files(&repo_root)?.into_iter().collect();
-
-    if age_files.is_empty() {
-        println!("No .age files found in {REPO_SECRETS_DIR}/");
-        return Ok(());
-    }
 
     // Ensure output directory exists with correct permissions
     let out_dir = config::decrypted_dir(&repo_identifier)?;

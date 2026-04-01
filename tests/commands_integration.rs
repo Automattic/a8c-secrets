@@ -146,6 +146,36 @@ fn decrypt_non_interactive_fails_when_no_key_configured() {
 }
 
 #[test]
+fn decrypt_non_interactive_succeeds_without_key_when_no_age_files_exist() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_dir = temp.path().join("repo");
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&repo_dir).unwrap();
+    fs::create_dir_all(&home_dir).unwrap();
+
+    let repo_name = "demo-repo";
+    git_init_with_origin(&repo_dir, repo_name);
+
+    let assert = configured_command(&repo_dir, &home_dir)
+        .arg("decrypt")
+        .arg("--non-interactive")
+        .env_remove("A8C_SECRETS_IDENTITY")
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        stdout.contains("No .age files found"),
+        "expected no-age-files notice in stdout: {stdout}"
+    );
+
+    let out_dir = secrets_home(&home_dir).join(repo_identifier(repo_name));
+    assert!(
+        !out_dir.exists(),
+        "decrypted directory should not be created when there are no .age files"
+    );
+}
+
+#[test]
 fn decrypt_non_interactive_writes_plaintext_to_local_home_dir() {
     let temp = tempfile::tempdir().unwrap();
     let repo_dir = temp.path().join("repo");

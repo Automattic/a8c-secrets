@@ -2,15 +2,15 @@ use std::collections::BTreeSet;
 
 use anyhow::Result;
 
-use crate::config::{self, REPO_SECRETS_DIR};
+use crate::config::{self, REPO_SECRETS_DIR, SecretFileName};
 use crate::crypto::CryptoEngine;
 use crate::keys;
 use zeroize::Zeroizing;
 
 fn collect_all_files(
-    age_files: &BTreeSet<String>,
-    decrypted_files: &BTreeSet<String>,
-) -> BTreeSet<String> {
+    age_files: &BTreeSet<SecretFileName>,
+    decrypted_files: &BTreeSet<SecretFileName>,
+) -> BTreeSet<SecretFileName> {
     age_files.union(decrypted_files).cloned().collect()
 }
 
@@ -70,8 +70,9 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     println!();
 
     // Collect all known file names from both sides
-    let age_files: BTreeSet<String> = config::list_age_files(&repo_root)?.into_iter().collect();
-    let decrypted_files: BTreeSet<String> = config::list_decrypted_files(&repo_identifier)?
+    let age_files: BTreeSet<SecretFileName> =
+        config::list_age_files(&repo_root)?.into_iter().collect();
+    let decrypted_files: BTreeSet<SecretFileName> = config::list_decrypted_files(&repo_identifier)?
         .into_iter()
         .collect();
     let all_files = collect_all_files(&age_files, &decrypted_files);
@@ -95,7 +96,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
                 match &private_key {
                     Some(key) => {
                         let age_path = secrets_dir.join(format!("{name}.age"));
-                        let decrypted_path = decrypted_dir.join(name);
+                        let decrypted_path = decrypted_dir.join(name.as_str());
                         let ciphertext = std::fs::read(&age_path)?;
                         let decrypted_content = Zeroizing::new(std::fs::read(&decrypted_path)?);
                         match crypto_engine.decrypt(&ciphertext, key) {
@@ -125,14 +126,21 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::collect_all_files;
+    use crate::config::SecretFileName;
     use std::collections::BTreeSet;
 
     #[test]
     fn collect_all_files_returns_sorted_union_without_duplicates() {
-        let age = BTreeSet::from(["b.yml".to_string(), "a.json".to_string()]);
-        let decrypted = BTreeSet::from(["a.json".to_string(), "c.toml".to_string()]);
+        let age = BTreeSet::from([
+            SecretFileName::try_from("b.yml").unwrap(),
+            SecretFileName::try_from("a.json").unwrap(),
+        ]);
+        let decrypted = BTreeSet::from([
+            SecretFileName::try_from("a.json").unwrap(),
+            SecretFileName::try_from("c.toml").unwrap(),
+        ]);
         let all = collect_all_files(&age, &decrypted);
-        let ordered: Vec<String> = all.into_iter().collect();
+        let ordered: Vec<String> = all.iter().map(ToString::to_string).collect();
         assert_eq!(ordered, vec!["a.json", "b.yml", "c.toml"]);
     }
 }

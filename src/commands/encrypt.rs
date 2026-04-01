@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use anyhow::{Context, Result};
 
 use crate::cli::EncryptArgs;
-use crate::config::{self, REPO_SECRETS_DIR};
+use crate::config::{self, REPO_SECRETS_DIR, SecretFileName};
 use crate::crypto::CryptoEngine;
 use crate::keys;
 use zeroize::Zeroizing;
@@ -13,10 +13,10 @@ fn should_attempt_smart_compare(force: bool, has_private_key: bool, age_exists: 
 }
 
 fn collect_missing_decrypted_warnings(
-    age_files: &[String],
-    decrypted_files: &BTreeSet<String>,
-    files_to_consider: &BTreeSet<String>,
-) -> Vec<String> {
+    age_files: &[SecretFileName],
+    decrypted_files: &BTreeSet<SecretFileName>,
+    files_to_consider: &BTreeSet<SecretFileName>,
+) -> Vec<SecretFileName> {
     age_files
         .iter()
         .filter(|name| !decrypted_files.contains(*name) && !files_to_consider.contains(*name))
@@ -50,19 +50,20 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
     // Determine which files to consider (validate basenames before existence
     // checks so path-like arguments fail with a clear error, not "file not found")
     let files_to_consider = if args.files.is_empty() {
-        let names = config::list_decrypted_files(&repo_identifier)?;
-        for name in &names {
-            config::validate_secret_basename(name)?;
-        }
-        names
+        config::list_decrypted_files(&repo_identifier)?
     } else {
+        let mut selected = Vec::new();
         for f in &args.files {
-            config::validate_secret_basename(f)?;
-            if !decrypted_dir.join(f).exists() {
-                anyhow::bail!("File not found: {}", decrypted_dir.join(f).display());
+            let file_name = SecretFileName::try_from(f.as_str())?;
+            if !decrypted_dir.join(file_name.as_str()).exists() {
+                anyhow::bail!(
+                    "File not found: {}",
+                    decrypted_dir.join(file_name.as_str()).display()
+                );
             }
+            selected.push(file_name);
         }
-        args.files.clone()
+        selected
     };
 
     if files_to_consider.is_empty() {
@@ -91,7 +92,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
     let mut skipped_count = 0;
 
     for name in &files_to_consider {
-        let decrypted_path = decrypted_dir.join(name);
+        let decrypted_path = decrypted_dir.join(name.as_str());
         let age_path = secrets_dir.join(format!("{name}.age"));
 
         let decrypted_content = Zeroizing::new(
@@ -133,10 +134,10 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
 
     // Check for missing decrypted files (age exists but no plaintext)
     let age_files = config::list_age_files(&repo_root)?;
-    let decrypted_set: BTreeSet<String> = config::list_decrypted_files(&repo_identifier)?
+    let decrypted_set: BTreeSet<SecretFileName> = config::list_decrypted_files(&repo_identifier)?
         .into_iter()
         .collect();
-    let consider_set: BTreeSet<String> = files_to_consider.into_iter().collect();
+    let consider_set: BTreeSet<SecretFileName> = files_to_consider.into_iter().collect();
     for name in collect_missing_decrypted_warnings(&age_files, &decrypted_set, &consider_set) {
         eprintln!("  {name} — warning: .age exists but no decrypted plaintext, skipping");
     }
@@ -153,6 +154,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{collect_missing_decrypted_warnings, should_attempt_smart_compare};
+    use crate::config::SecretFileName;
     use std::collections::BTreeSet;
 
     #[test]
@@ -166,15 +168,15 @@ mod tests {
     #[test]
     fn collect_missing_decrypted_warnings_excludes_considered_files() {
         let age_files = vec![
-            "a.json".to_string(),
-            "b.yml".to_string(),
-            "c.toml".to_string(),
+            SecretFileName::try_from("a.json").unwrap(),
+            SecretFileName::try_from("b.yml").unwrap(),
+            SecretFileName::try_from("c.toml").unwrap(),
         ];
-        let decrypted_files = BTreeSet::from(["a.json".to_string()]);
-        let files_to_consider = BTreeSet::from(["b.yml".to_string()]);
+        let decrypted_files = BTreeSet::from([SecretFileName::try_from("a.json").unwrap()]);
+        let files_to_consider = BTreeSet::from([SecretFileName::try_from("b.yml").unwrap()]);
 
         let warnings =
             collect_missing_decrypted_warnings(&age_files, &decrypted_files, &files_to_consider);
-        assert_eq!(warnings, vec!["c.toml"]);
+        assert_eq!(warnings, vec![SecretFileName::try_from("c.toml").unwrap()]);
     }
 }

@@ -14,12 +14,12 @@ use crate::config::{self, REPO_SECRETS_DIR};
 pub fn run(args: &RmArgs) -> Result<()> {
     let repo_root = config::find_repo_root()?;
     let repo_identifier = config::RepoIdentifier::auto_detect()?;
-    config::validate_secret_basename(&args.file)?;
+    let file_name = config::SecretFileName::try_from(args.file.as_str())?;
 
-    let decrypted_path = config::decrypted_dir(&repo_identifier)?.join(&args.file);
+    let decrypted_path = config::decrypted_dir(&repo_identifier)?.join(file_name.as_str());
     let age_path = repo_root
         .join(REPO_SECRETS_DIR)
-        .join(format!("{}.age", args.file));
+        .join(format!("{file_name}.age"));
 
     let decrypted_exists = decrypted_path.exists();
     let age_exists = age_path.exists();

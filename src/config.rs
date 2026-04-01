@@ -13,6 +13,10 @@ pub const HOME_SECRETS_DIR: &str = ".a8c-secrets";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RepoIdentifier(String);
 
+/// Validated secret file name (single flat path segment).
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SecretFileName(String);
+
 impl fmt::Display for RepoIdentifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
@@ -105,6 +109,19 @@ impl RepoIdentifier {
     }
 }
 
+impl fmt::Display for SecretFileName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl SecretFileName {
+    /// Borrow the secret file name as `&str`.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 impl TryFrom<String> for RepoIdentifier {
     type Error = anyhow::Error;
 
@@ -125,6 +142,23 @@ impl TryFrom<String> for RepoIdentifier {
             }
         }
         Ok(Self(value))
+    }
+}
+
+impl TryFrom<String> for SecretFileName {
+    type Error = anyhow::Error;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        validate_single_path_segment(&value, "Secret name")?;
+        Ok(Self(value))
+    }
+}
+
+impl TryFrom<&str> for SecretFileName {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::try_from(value.to_string())
     }
 }
 
@@ -207,22 +241,9 @@ fn validate_single_path_segment(name: &str, what: &'static str) -> Result<()> {
     }
 }
 
-/// Ensure `name` is a single non-empty path segment (a flat secret basename).
-///
-/// Rejects empty strings, `.`, `..`, path separators, multiple components, and
-/// embedded NUL bytes. Backslashes are always rejected so rules match across
-/// platforms.
-///
-/// # Errors
-///
-/// Returns an error if `name` is not a valid secret file stem.
-pub fn validate_secret_basename(name: &str) -> Result<()> {
-    validate_single_path_segment(name, "Secret name")
-}
-
 /// List `.age` file stems in `.a8c-secrets/` (e.g. "google-services.json" from "google-services.json.age").
 ///
-/// Each stem must pass [`validate_secret_basename`] so malicious or mistaken
+/// Each stem must pass [`SecretFileName`] validation so malicious or mistaken
 /// filenames (e.g. `..age` → stem `..`) cannot cause path traversal when
 /// joined with output paths.
 ///
@@ -231,7 +252,7 @@ pub fn validate_secret_basename(name: &str) -> Result<()> {
 /// Returns an error if the secrets directory exists but cannot be read, or if
 /// an `.age` file has an invalid stem. Non-file `.age` entries are skipped with
 /// a warning.
-pub fn list_age_files(repo_root: &Path) -> Result<Vec<String>> {
+pub fn list_age_files(repo_root: &Path) -> Result<Vec<SecretFileName>> {
     let dir = repo_root.join(REPO_SECRETS_DIR);
     let mut names = Vec::new();
     if !dir.exists() {
@@ -253,10 +274,10 @@ pub fn list_age_files(repo_root: &Path) -> Result<Vec<String>> {
                 );
                 continue;
             }
-            validate_secret_basename(stem).with_context(|| {
+            let secret_name = SecretFileName::try_from(stem).with_context(|| {
                 format!("Invalid secret name in {REPO_SECRETS_DIR}/{name} (stem must be a flat basename)")
             })?;
-            names.push(stem.to_string());
+            names.push(secret_name);
         }
     }
     names.sort();
@@ -265,14 +286,14 @@ pub fn list_age_files(repo_root: &Path) -> Result<Vec<String>> {
 
 /// List decrypted files in `~/.a8c-secrets/<host>/<org>/<name>/`.
 ///
-/// Each file name must pass [`validate_secret_basename`], matching rules for
+/// Each file name must pass [`SecretFileName`] validation, matching rules for
 /// secret basenames under `.a8c-secrets/`.
 ///
 /// # Errors
 ///
 /// Returns an error if the decrypted directory exists but cannot be read,
 /// or if a file name is not a valid flat basename.
-pub fn list_decrypted_files(repo_identifier: &RepoIdentifier) -> Result<Vec<String>> {
+pub fn list_decrypted_files(repo_identifier: &RepoIdentifier) -> Result<Vec<SecretFileName>> {
     let dir = decrypted_dir(repo_identifier)?;
     let mut names = Vec::new();
     if !dir.exists() {
@@ -287,10 +308,10 @@ pub fn list_decrypted_files(repo_identifier: &RepoIdentifier) -> Result<Vec<Stri
                 eprintln!("Warning: skipping non-UTF-8 filename in {}", dir.display());
                 continue;
             };
-            validate_secret_basename(&name).with_context(|| {
+            let secret_name = SecretFileName::try_from(name.as_str()).with_context(|| {
                 format!("Invalid secret file name in {}: {name}", dir.display())
             })?;
-            names.push(name);
+            names.push(secret_name);
         }
     }
     names.sort();
@@ -406,36 +427,36 @@ mod tests {
         assert!(RepoIdentifier::try_from("GitHub.com/org/repo".to_string()).is_err());
     }
 
-    // -- validate_secret_basename --
+    // -- SecretFileName validation --
 
     #[test]
-    fn validate_secret_basename_accepts_flat_names() {
-        validate_secret_basename("Secrets.swift").unwrap();
-        validate_secret_basename("wear-google-services.json").unwrap();
-        validate_secret_basename("config.json").unwrap();
+    fn secret_file_name_try_from_accepts_flat_names() {
+        SecretFileName::try_from("Secrets.swift").unwrap();
+        SecretFileName::try_from("wear-google-services.json").unwrap();
+        SecretFileName::try_from("config.json").unwrap();
     }
 
     #[test]
-    fn validate_secret_basename_rejects_empty() {
-        assert!(validate_secret_basename("").is_err());
+    fn secret_file_name_try_from_rejects_empty() {
+        assert!(SecretFileName::try_from("").is_err());
     }
 
     #[test]
-    fn validate_secret_basename_rejects_dot_entries() {
-        assert!(validate_secret_basename(".").is_err());
-        assert!(validate_secret_basename("..").is_err());
+    fn secret_file_name_try_from_rejects_dot_entries() {
+        assert!(SecretFileName::try_from(".").is_err());
+        assert!(SecretFileName::try_from("..").is_err());
     }
 
     #[test]
-    fn validate_secret_basename_rejects_path_separators() {
-        assert!(validate_secret_basename("foo/bar").is_err());
-        assert!(validate_secret_basename("../secret").is_err());
-        assert!(validate_secret_basename("a\\b").is_err());
+    fn secret_file_name_try_from_rejects_path_separators() {
+        assert!(SecretFileName::try_from("foo/bar").is_err());
+        assert!(SecretFileName::try_from("../secret").is_err());
+        assert!(SecretFileName::try_from("a\\b").is_err());
     }
 
     #[test]
-    fn validate_secret_basename_rejects_nul() {
-        assert!(validate_secret_basename("a\0b").is_err());
+    fn secret_file_name_try_from_rejects_nul() {
+        assert!(SecretFileName::try_from("a\0b").is_err());
     }
 
     // -- list_age_files --
@@ -451,7 +472,13 @@ mod tests {
         fs::create_dir_all(secrets.join("nested.age")).unwrap();
 
         let files = list_age_files(dir.path()).unwrap();
-        assert_eq!(files, vec!["a-keys.yml", "z-config.json"]);
+        assert_eq!(
+            files,
+            vec![
+                SecretFileName::try_from("a-keys.yml").unwrap(),
+                SecretFileName::try_from("z-config.json").unwrap(),
+            ]
+        );
     }
 
     #[test]

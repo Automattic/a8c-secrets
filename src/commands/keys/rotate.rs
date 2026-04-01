@@ -5,7 +5,7 @@ use inquire::{Confirm, Select};
 use std::io::IsTerminal;
 
 use super::{PUBLIC_KEY_LIST_LEGEND, PublicKeyListRow};
-use crate::config::{self, REPO_SECRETS_DIR};
+use crate::config::{self, REPO_SECRETS_DIR, SecretFileName};
 use crate::crypto::{CryptoEngine, PrivateKey, PublicKey};
 use crate::keys;
 
@@ -56,7 +56,7 @@ fn print_confirmation_plan(
     keys_pub_path: &Path,
     local_key_path: &Path,
     secrets_dir: &Path,
-    age_files: &[String],
+    age_files: &[SecretFileName],
     decrypted_dir_display: Option<String>,
 ) {
     println!();

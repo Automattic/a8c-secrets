@@ -8,13 +8,20 @@ use std::process::Stdio;
 use age::secrecy::ExposeSecret;
 use assert_cmd::Command;
 
-fn git_init_with_origin(repo_dir: &Path, repo_name: &str) {
+fn git_init(repo_dir: &Path) {
     let status = std::process::Command::new("git")
         .args(["init", "-q"])
         .current_dir(repo_dir)
         .status()
         .expect("spawn git init");
     assert!(status.success(), "git init failed (is git installed?)");
+
+    let secrets_dir = repo_dir.join(".a8c-secrets");
+    fs::create_dir_all(&secrets_dir).unwrap();
+}
+
+fn git_init_with_origin(repo_dir: &Path, repo_name: &str) {
+    git_init(repo_dir);
     let remote = format!("https://github.com/org/{repo_name}.git");
     let status = std::process::Command::new("git")
         .args(["remote", "add", "origin", &remote])
@@ -22,9 +29,6 @@ fn git_init_with_origin(repo_dir: &Path, repo_name: &str) {
         .status()
         .expect("spawn git remote");
     assert!(status.success(), "git remote add failed");
-
-    let secrets_dir = repo_dir.join(".a8c-secrets");
-    fs::create_dir_all(&secrets_dir).unwrap();
 }
 
 fn write_keys_pub(repo_dir: &Path, dev_public: &str, ci_public: &str) {
@@ -172,6 +176,35 @@ fn decrypt_non_interactive_succeeds_without_key_when_no_age_files_exist() {
     assert!(
         !out_dir.exists(),
         "decrypted directory should not be created when there are no .age files"
+    );
+}
+
+#[test]
+fn decrypt_non_interactive_succeeds_without_origin_when_no_age_files_exist() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_dir = temp.path().join("repo");
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&repo_dir).unwrap();
+    fs::create_dir_all(&home_dir).unwrap();
+
+    git_init(&repo_dir);
+
+    let assert = configured_command(&repo_dir, &home_dir)
+        .arg("decrypt")
+        .arg("--non-interactive")
+        .env_remove("A8C_SECRETS_IDENTITY")
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        stdout.contains("No .age files found"),
+        "expected no-age-files notice in stdout: {stdout}"
+    );
+
+    let secrets_home = secrets_home(&home_dir);
+    assert!(
+        !secrets_home.exists(),
+        "local secrets home should not be created when there are no .age files"
     );
 }
 

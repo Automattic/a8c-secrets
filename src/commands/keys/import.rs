@@ -10,11 +10,9 @@ use crate::keys;
 /// Returns an error if repo/config discovery fails, user input fails, or the
 /// key cannot be validated/persisted.
 pub fn run() -> Result<()> {
-    let repo_root = config::find_repo_root()?;
-    let repo_config = config::load_repo_config(&repo_root)?;
-    let slug = &repo_config.repo;
+    let repo_identifier = config::RepoIdentifier::auto_detect()?;
 
-    let _ = keys::prompt_and_import_private_key(slug)?;
+    let _ = keys::prompt_and_import_private_key(&repo_identifier)?;
     println!("Run `a8c-secrets decrypt` to decrypt secret files.");
 
     Ok(())

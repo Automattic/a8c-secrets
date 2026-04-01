@@ -28,15 +28,14 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
     let interactive = !args.non_interactive && io::stdin().is_terminal();
 
     let repo_root = config::find_repo_root()?;
-    let repo_config = config::load_repo_config(&repo_root)?;
-    let slug = &repo_config.repo;
+    let repo_identifier = config::RepoIdentifier::auto_detect()?;
 
     // Get or prompt for private key
-    let private_key = match keys::get_private_key(slug) {
+    let private_key = match keys::get_private_key(&repo_identifier) {
         Ok(key) => key,
         Err(_) if interactive => {
-            println!("No private key found for '{slug}'.");
-            keys::prompt_and_import_private_key(slug)?
+            println!("No private key found for '{repo_identifier}'.");
+            keys::prompt_and_import_private_key(&repo_identifier)?
         }
         Err(e) => return Err(e),
     };
@@ -49,7 +48,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
     }
 
     // Ensure output directory exists with correct permissions
-    let out_dir = config::decrypted_dir(slug)?;
+    let out_dir = config::decrypted_dir(&repo_identifier)?;
     std::fs::create_dir_all(&out_dir)?;
     permissions::set_secure_dir_permissions(&out_dir)?;
 
@@ -86,7 +85,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
     );
 
     // Orphan detection: local files with no corresponding .age
-    handle_orphans(slug, &age_files, interactive)?;
+    handle_orphans(&repo_identifier, &age_files, interactive)?;
 
     if decrypt_failures > 0 {
         anyhow::bail!(
@@ -99,8 +98,12 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
 }
 
 /// Detect and handle orphan files (local plaintext with no .age counterpart).
-fn handle_orphans(slug: &str, age_files: &BTreeSet<String>, interactive: bool) -> Result<()> {
-    let local_files = config::list_local_files(slug)?;
+fn handle_orphans(
+    repo_identifier: &config::RepoIdentifier,
+    age_files: &BTreeSet<String>,
+    interactive: bool,
+) -> Result<()> {
+    let local_files = config::list_local_files(repo_identifier)?;
     let orphans = compute_orphans(&local_files, age_files);
 
     if orphans.is_empty() {
@@ -125,7 +128,7 @@ fn handle_orphans(slug: &str, age_files: &BTreeSet<String>, interactive: bool) -
     };
 
     if should_remove {
-        let out_dir = config::decrypted_dir(slug)?;
+        let out_dir = config::decrypted_dir(repo_identifier)?;
         for name in &orphans {
             let path = out_dir.join(name);
             std::fs::remove_file(&path)

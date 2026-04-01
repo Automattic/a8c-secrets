@@ -20,6 +20,7 @@ shell-words = "1.1"
 tempfile = "3"
 toml = "0.8"
 zeroize = "1.7"
+url = "2"
 
 [target.'cfg(windows)'.dependencies]
 windows-permissions = "0.2.4"

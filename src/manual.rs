@@ -3,7 +3,7 @@ pub fn print() {
     print!("{MANUAL}");
 }
 
-const MANUAL: &str = r#"a8c-secrets — Encrypted secrets management for Automattic mobile repositories
+const MANUAL: &str = r"a8c-secrets — Encrypted secrets management for Automattic mobile repositories
 
 OVERVIEW
     a8c-secrets wraps the `age` encryption library (https://age-encryption.org/v1)
@@ -23,7 +23,6 @@ FILE LAYOUT
     In the repository (committed to git):
 
         .a8c-secrets/
-        ├── config.toml              repo = "<slug>"
         ├── keys.pub                 Public keys (dev + CI), one per line
         ├── google-services.json.age
         └── api-keys.yml.age
@@ -32,8 +31,8 @@ FILE LAYOUT
 
         ~/.a8c-secrets/
         ├── keys/                    Directory mode 0700
-        │   └── <repo>.key          Private key, file mode 0600
-        └── <repo>/                  Decrypted secret files
+        │   └── <host>/<org>/<name>.key   Private key, file mode 0600
+        └── <host>/<org>/<name>/          Decrypted secret files
             ├── google-services.json
             └── api-keys.yml
 
@@ -64,14 +63,14 @@ GETTING STARTED
         git add .a8c-secrets/        # Commit encrypted changes
 
     Orphan plaintext (after decrypt): if a decrypted file still exists under
-    ~/.a8c-secrets/<repo>/ but its .age was removed from the repo, decrypt
+    ~/.a8c-secrets/<host>/<org>/<name>/ but its .age was removed from the repo, decrypt
     lists it and asks whether to delete the local copy (interactive only).
     With --non-interactive or in CI (no TTY), those files are removed
     automatically without prompting.
 
 COMMANDS
     Daily operations:
-        decrypt [--non-interactive]       Decrypt .age files to ~/.a8c-secrets/<repo>/
+        decrypt [--non-interactive]       Decrypt .age files to ~/.a8c-secrets/<host>/<org>/<name>/
         encrypt [file ...] [--force]      Encrypt modified secrets back to .age
         edit <file>                       Open in $EDITOR, encrypt if changed
         rm <file>                         Remove secret (plaintext + .age)
@@ -104,9 +103,9 @@ KEY MANAGEMENT
         dev   Shared by all developers. Private key in Secret Store.
         ci    Used by CI agents (Buildkite). Private key in Buildkite secrets.
 
-    Secret Store entry names (typical convention; <repo> is the repo slug):
-        a8c-secrets dev private key for <repo>
-        a8c-secrets CI private key for <repo>
+    Secret Store entry names (typical convention; <host>/<org>/<name> is the repo identifier):
+        a8c-secrets dev private key for <host>/<org>/<name>
+        a8c-secrets CI private key for <host>/<org>/<name>
 
     The tool identifies which key is yours by deriving the public key from
     your local private key and matching it against entries in keys.pub.
@@ -134,11 +133,10 @@ ENVIRONMENT VARIABLES
         vi (Unix) or notepad (Windows).
 
 FILES
-    .a8c-secrets/config.toml       Repo slug (committed)
     .a8c-secrets/keys.pub          Public keys (committed)
     .a8c-secrets/*.age             Encrypted secrets (committed)
-    ~/.a8c-secrets/keys/<repo>.key Dev private key (local, mode 0600)
-    ~/.a8c-secrets/<repo>/*        Decrypted secrets (local)
+    ~/.a8c-secrets/keys/<host>/<org>/<name>.key Dev private key (local, mode 0600)
+    ~/.a8c-secrets/<host>/<org>/<name>/*        Decrypted secrets (local)
 
 SEE ALSO
     `age` specification:     https://age-encryption.org/v1
@@ -146,4 +144,4 @@ SEE ALSO
     `age` crate (Rust):      https://docs.rs/age/latest/age/
     rage (Rust `age` CLI):   https://github.com/str4d/rage
     Secret Store:            https://mc.a8c.com/secret-store/
-"#;
+";

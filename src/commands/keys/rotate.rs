@@ -65,7 +65,7 @@ fn print_rotation_reminder() {
 }
 
 fn print_confirmation_plan(
-    slug: &str,
+    repo_identifier: &config::RepoIdentifier,
     rotating_owned: bool,
     keys_pub_path: &Path,
     local_key_path: &Path,
@@ -106,14 +106,14 @@ fn print_confirmation_plan(
     if rotating_owned {
         println!(
             " - Update the Secret Store entry \"{}\" with the new private key",
-            keys::secret_store_entry_name(slug, false)
+            keys::secret_store_entry_name(repo_identifier, false)
         );
         println!(" - Notify the team to run `a8c-secrets keys import` where needed");
         println!(" - Commit the changes under `.a8c-secrets/` (e.g. keys.pub and *.age files)");
     } else {
         println!(
             " - Update the Secret Store entry \"{}\" with the new private key",
-            keys::secret_store_entry_name(slug, true)
+            keys::secret_store_entry_name(repo_identifier, true)
         );
         println!(
             " - Update CI secrets for this repo (e.g. Buildkite `A8C_SECRETS_IDENTITY`, or anywhere the old private key was configured) with the new private key"
@@ -146,7 +146,7 @@ fn print_confirmation_plan(
 pub(crate) fn apply_key_rotation(
     crypto_engine: &dyn CryptoEngine,
     repo_root: &Path,
-    slug: &str,
+    repo_identifier: &config::RepoIdentifier,
     old_public_key: &PublicKey,
     private_key_for_decrypt: &PrivateKey,
 ) -> Result<()> {
@@ -175,7 +175,7 @@ pub(crate) fn apply_key_rotation(
     }
 
     if rotating_owned {
-        let key_path = keys::save_private_key(slug, &new_private_key)?;
+        let key_path = keys::save_private_key(repo_identifier, &new_private_key)?;
         println!();
         println!("Updated local private key at {}", key_path.display());
     }
@@ -204,10 +204,9 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     }
 
     let repo_root = config::find_repo_root()?;
-    let repo_config = config::load_repo_config(&repo_root)?;
-    let slug = &repo_config.repo;
+    let repo_identifier = config::RepoIdentifier::auto_detect()?;
 
-    let private_key_for_decrypt = keys::get_private_key(slug)?;
+    let private_key_for_decrypt = keys::get_private_key(&repo_identifier)?;
     let public_key_from_decrypt_private_key = private_key_for_decrypt.to_public();
     let public_keys = keys::load_public_keys(&repo_root)?;
 
@@ -224,15 +223,15 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
         select_public_key_to_rotate(&public_keys, &public_key_from_decrypt_private_key)?;
 
     let keys_pub_path = keys::public_keys_path(&repo_root);
-    let local_key_path = keys::private_key_path(slug)?;
+    let local_key_path = keys::private_key_path(&repo_identifier)?;
     let secrets_dir = repo_root.join(REPO_SECRETS_DIR);
     let age_files = config::list_age_files(&repo_root)?;
-    let decrypted_dir_display = config::decrypted_dir(slug)
+    let decrypted_dir_display = config::decrypted_dir(&repo_identifier)
         .ok()
         .map(|p| p.display().to_string());
 
     print_confirmation_plan(
-        slug,
+        &repo_identifier,
         selection.matches_local_private_key,
         &keys_pub_path,
         &local_key_path,
@@ -246,7 +245,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     apply_key_rotation(
         crypto_engine,
         &repo_root,
-        slug,
+        &repo_identifier,
         &selection.key,
         &private_key_for_decrypt,
     )
@@ -259,7 +258,7 @@ mod tests {
     use std::io::{Read, Write};
 
     use super::apply_key_rotation;
-    use crate::config::REPO_SECRETS_DIR;
+    use crate::config::{self, REPO_SECRETS_DIR};
     use crate::crypto::{AgeCrateEngine, PrivateKey, PublicKey};
     use serial_test::serial;
 
@@ -285,16 +284,6 @@ mod tests {
         Ok(out)
     }
 
-    fn write_repo_config(repo_dir: &std::path::Path, slug: &str) {
-        let secrets_dir = repo_dir.join(REPO_SECRETS_DIR);
-        fs::create_dir_all(&secrets_dir).unwrap();
-        fs::write(
-            secrets_dir.join("config.toml"),
-            format!("repo = \"{slug}\"\n"),
-        )
-        .unwrap();
-    }
-
     fn write_keys_pub(repo_dir: &std::path::Path, dev_public: &str, ci_public: &str) {
         fs::write(
             repo_dir.join(".a8c-secrets/keys.pub"),
@@ -313,8 +302,9 @@ mod tests {
         let secrets_home_str = secrets_home.to_str().unwrap();
         temp_env::with_var("A8C_SECRETS_HOME", Some(secrets_home_str), || {
             let repo_dir = tempfile::tempdir().unwrap();
-            let slug = "demo-repo";
-            write_repo_config(repo_dir.path(), slug);
+            let repo_identifier =
+                config::RepoIdentifier::try_from("github.com/org/demo-repo".to_string()).unwrap();
+            fs::create_dir_all(repo_dir.path().join(REPO_SECRETS_DIR)).unwrap();
 
             let old_dev_identity = age::x25519::Identity::generate();
             let ci_identity = age::x25519::Identity::generate();
@@ -322,7 +312,9 @@ mod tests {
             let ci_public = ci_identity.to_public().to_string();
             write_keys_pub(repo_dir.path(), &old_dev_public, &ci_public);
 
-            let key_path = secrets_home.join("keys").join(format!("{slug}.key"));
+            let key_path = secrets_home
+                .join("keys")
+                .join("github.com/org/demo-repo.key");
             fs::create_dir_all(key_path.parent().unwrap()).unwrap();
             fs::write(
                 &key_path,
@@ -344,7 +336,7 @@ mod tests {
             apply_key_rotation(
                 &engine,
                 repo_dir.path(),
-                slug,
+                &repo_identifier,
                 &old_dev_public_key,
                 &old_dev_identity,
             )
@@ -397,8 +389,9 @@ mod tests {
         let secrets_home_str = secrets_home.to_str().unwrap();
         temp_env::with_var("A8C_SECRETS_HOME", Some(secrets_home_str), || {
             let repo_dir = tempfile::tempdir().unwrap();
-            let slug = "demo-repo";
-            write_repo_config(repo_dir.path(), slug);
+            let repo_identifier =
+                config::RepoIdentifier::try_from("github.com/org/demo-repo".to_string()).unwrap();
+            fs::create_dir_all(repo_dir.path().join(REPO_SECRETS_DIR)).unwrap();
 
             let old_dev_identity = age::x25519::Identity::generate();
             let ci_identity = age::x25519::Identity::generate();
@@ -406,7 +399,9 @@ mod tests {
             let ci_public = ci_identity.to_public().to_string();
             write_keys_pub(repo_dir.path(), &old_dev_public, &ci_public);
 
-            let key_path = secrets_home.join("keys").join(format!("{slug}.key"));
+            let key_path = secrets_home
+                .join("keys")
+                .join("github.com/org/demo-repo.key");
             fs::create_dir_all(key_path.parent().unwrap()).unwrap();
             fs::write(
                 &key_path,
@@ -431,7 +426,7 @@ mod tests {
             apply_key_rotation(
                 &engine,
                 repo_dir.path(),
-                slug,
+                &repo_identifier,
                 &old_dev_public_key,
                 &old_dev_identity,
             )

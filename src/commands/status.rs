@@ -25,10 +25,9 @@ const EXPECTED_PUBLIC_KEYS: usize = 2;
 /// file contents cannot be read, or decrypt/compare operations fail.
 pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     let repo_root = config::find_repo_root()?;
-    let repo_config = config::load_repo_config(&repo_root)?;
-    let slug = &repo_config.repo;
+    let repo_identifier = config::RepoIdentifier::auto_detect()?;
 
-    println!("Repo: {slug}");
+    println!("Repo: {repo_identifier}");
 
     let public_keys_result = keys::load_public_keys(&repo_root);
     match &public_keys_result {
@@ -44,7 +43,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
         }
     }
 
-    let private_key = if let Ok(key) = keys::get_private_key(slug) {
+    let private_key = if let Ok(key) = keys::get_private_key(&repo_identifier) {
         match &public_keys_result {
             Ok(public_keys) => {
                 let derived = key.to_public();
@@ -72,7 +71,9 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
 
     // Collect all known file names from both sides
     let age_files: BTreeSet<String> = config::list_age_files(&repo_root)?.into_iter().collect();
-    let local_files: BTreeSet<String> = config::list_local_files(slug)?.into_iter().collect();
+    let local_files: BTreeSet<String> = config::list_local_files(&repo_identifier)?
+        .into_iter()
+        .collect();
     let all_files = collect_all_files(&age_files, &local_files);
 
     if all_files.is_empty() {
@@ -81,7 +82,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     }
 
     let secrets_dir = repo_root.join(REPO_SECRETS_DIR);
-    let local_dir = config::decrypted_dir(slug)?;
+    let local_dir = config::decrypted_dir(&repo_identifier)?;
 
     println!("Files:");
     for name in &all_files {

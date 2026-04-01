@@ -13,11 +13,10 @@ use crate::config::{self, REPO_SECRETS_DIR};
 /// user-selected deletions fail, or user input cannot be read.
 pub fn run(args: &RmArgs) -> Result<()> {
     let repo_root = config::find_repo_root()?;
-    let repo_config = config::load_repo_config(&repo_root)?;
-    let slug = &repo_config.repo;
+    let repo_identifier = config::RepoIdentifier::auto_detect()?;
     config::validate_secret_basename(&args.file)?;
 
-    let local_path = config::decrypted_dir(slug)?.join(&args.file);
+    let local_path = config::decrypted_dir(&repo_identifier)?.join(&args.file);
     let age_path = repo_root
         .join(REPO_SECRETS_DIR)
         .join(format!("{}.age", args.file));

@@ -33,13 +33,12 @@ fn collect_missing_local_warnings(
 /// output files cannot be written.
 pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
     let repo_root = config::find_repo_root()?;
-    let repo_config = config::load_repo_config(&repo_root)?;
-    let slug = &repo_config.repo;
+    let repo_identifier = config::RepoIdentifier::auto_detect()?;
 
     let public_keys = keys::load_public_keys(&repo_root)?;
 
     let secrets_dir = repo_root.join(REPO_SECRETS_DIR);
-    let local_dir = config::decrypted_dir(slug)?;
+    let local_dir = config::decrypted_dir(&repo_identifier)?;
 
     if !local_dir.exists() {
         anyhow::bail!(
@@ -51,7 +50,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
     // Determine which files to consider (validate basenames before existence
     // checks so path-like arguments fail with a clear error, not "file not found")
     let files_to_consider = if args.files.is_empty() {
-        let names = config::list_local_files(slug)?;
+        let names = config::list_local_files(&repo_identifier)?;
         for name in &names {
             config::validate_secret_basename(name)?;
         }
@@ -76,7 +75,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
     let private_key = if args.force {
         None
     } else {
-        match keys::get_private_key(slug) {
+        match keys::get_private_key(&repo_identifier) {
             Ok(key) => Some(key),
             Err(e) => {
                 eprintln!("Warning: Cannot perform smart comparison — {e}");
@@ -134,7 +133,9 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
 
     // Check for missing local files (age exists but no plaintext)
     let age_files = config::list_age_files(&repo_root)?;
-    let local_set: BTreeSet<String> = config::list_local_files(slug)?.into_iter().collect();
+    let local_set: BTreeSet<String> = config::list_local_files(&repo_identifier)?
+        .into_iter()
+        .collect();
     let consider_set: BTreeSet<String> = files_to_consider.into_iter().collect();
     for name in collect_missing_local_warnings(&age_files, &local_set, &consider_set) {
         eprintln!("  {name} — warning: .age exists but no local plaintext, skipping");

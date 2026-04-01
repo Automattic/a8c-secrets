@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use zeroize::Zeroizing;
 
-use crate::config::{self, REPO_SECRETS_DIR};
+use crate::config::{self, REPO_SECRETS_DIR, RepoIdentifier};
 use crate::crypto::{PrivateKey, PublicKey};
 use crate::permissions;
 
@@ -18,11 +18,11 @@ use crate::permissions;
 pub const SECRET_STORE_BASE_URL: &str = "https://mc.a8c.com/secret-store/";
 
 /// Human-readable Secret Store entry name for the dev or CI private key.
-pub fn secret_store_entry_name(slug: &str, for_ci: bool) -> String {
+pub fn secret_store_entry_name(repo_identifier: &RepoIdentifier, for_ci: bool) -> String {
     if for_ci {
-        format!("a8c-secrets CI private key for {slug}")
+        format!("a8c-secrets CI private key for {repo_identifier}")
     } else {
-        format!("a8c-secrets dev private key for {slug}")
+        format!("a8c-secrets dev private key for {repo_identifier}")
     }
 }
 
@@ -40,15 +40,17 @@ pub fn print_private_key_to_stdout(title: &str, key: &PrivateKey) -> Result<()> 
     Ok(())
 }
 
-/// Path to the private key file for a given repo slug.
+/// Path to the private key file for a given repo identifier.
 ///
 /// # Errors
 ///
 /// Returns an error if the local secrets home directory cannot be determined.
-pub fn private_key_path(repo_slug: &str) -> Result<PathBuf> {
-    Ok(config::secrets_home()?
+pub fn private_key_path(repo_identifier: &RepoIdentifier) -> Result<PathBuf> {
+    let mut key_path = config::secrets_home()?
         .join("keys")
-        .join(format!("{repo_slug}.key")))
+        .join(repo_identifier.as_path());
+    key_path.set_extension("key");
+    Ok(key_path)
 }
 
 /// Path to `.a8c-secrets/keys.pub` under the given git repository root.
@@ -69,7 +71,7 @@ fn parse_private_key_trimmed(label: &str, raw: &str) -> Result<PrivateKey> {
 ///
 /// Returns an error if the env var points to an unreadable file, if the key
 /// file cannot be read, or if no key is configured.
-pub fn get_private_key(repo_slug: &str) -> Result<PrivateKey> {
+pub fn get_private_key(repo_identifier: &RepoIdentifier) -> Result<PrivateKey> {
     if let Ok(raw_val) = std::env::var("A8C_SECRETS_IDENTITY") {
         let val = Zeroizing::new(raw_val);
         if val.starts_with("AGE-SECRET-KEY-") {
@@ -81,7 +83,7 @@ pub fn get_private_key(repo_slug: &str) -> Result<PrivateKey> {
         );
         return parse_private_key_trimmed(val.as_str(), contents.as_str());
     }
-    let path = private_key_path(repo_slug)?;
+    let path = private_key_path(repo_identifier)?;
     let contents = Zeroizing::new(std::fs::read_to_string(&path).with_context(|| {
         format!(
             "No private key found at {}. Run `a8c-secrets keys import` to set up your key.",
@@ -107,8 +109,11 @@ pub fn get_private_key(repo_slug: &str) -> Result<PrivateKey> {
 ///
 /// Returns an error if key directories cannot be
 /// created, permissions cannot be set, or the key file cannot be written.
-pub fn save_private_key(repo_slug: &str, private_key: &PrivateKey) -> Result<PathBuf> {
-    let key_path = private_key_path(repo_slug)?;
+pub fn save_private_key(
+    repo_identifier: &RepoIdentifier,
+    private_key: &PrivateKey,
+) -> Result<PathBuf> {
+    let key_path = private_key_path(repo_identifier)?;
     if let Some(parent) = key_path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("Failed to create key directory {}", parent.display()))?;
@@ -159,14 +164,14 @@ pub fn save_private_key(repo_slug: &str, private_key: &PrivateKey) -> Result<Pat
 ///
 /// Returns an error if terminal input fails, key validation fails, or key
 /// persistence fails.
-pub fn prompt_and_import_private_key(slug: &str) -> Result<PrivateKey> {
-    println!("Import private key for '{slug}'");
+pub fn prompt_and_import_private_key(repo_identifier: &RepoIdentifier) -> Result<PrivateKey> {
+    println!("Import private key for '{repo_identifier}'");
     println!();
     println!("Get the dev private key from Secret Store:");
     println!(
         "  {}  (look for: {})",
         SECRET_STORE_BASE_URL,
-        secret_store_entry_name(slug, false)
+        secret_store_entry_name(repo_identifier, false)
     );
     println!();
 
@@ -180,9 +185,9 @@ pub fn prompt_and_import_private_key(slug: &str) -> Result<PrivateKey> {
     let key = PrivateKey::from_str(raw.trim())
         .map_err(|e| anyhow::anyhow!("Invalid private key: {e}"))?;
 
-    let key_path = private_key_path(slug)?;
+    let key_path = private_key_path(repo_identifier)?;
     let existed = key_path.exists();
-    let saved_path = save_private_key(slug, &key)?;
+    let saved_path = save_private_key(repo_identifier, &key)?;
 
     if existed {
         println!("Updated {}", saved_path.display());
@@ -302,18 +307,23 @@ mod tests {
     use serial_test::serial;
 
     #[test]
-    fn secret_store_entry_name_dev_substitutes_slug() {
+    fn secret_store_entry_name_dev_substitutes_identifier() {
+        let repo_identifier =
+            RepoIdentifier::try_from("github.com/automattic/wordpress-ios".to_string()).unwrap();
         assert_eq!(
-            secret_store_entry_name("wordpress-ios", false),
-            "a8c-secrets dev private key for wordpress-ios"
+            secret_store_entry_name(&repo_identifier, false),
+            "a8c-secrets dev private key for github.com/automattic/wordpress-ios"
         );
     }
 
     #[test]
-    fn secret_store_entry_name_ci_substitutes_slug() {
+    fn secret_store_entry_name_ci_substitutes_identifier() {
+        let repo_identifier =
+            RepoIdentifier::try_from("github.com/automattic/pocket-casts-android".to_string())
+                .unwrap();
         assert_eq!(
-            secret_store_entry_name("pocket-casts-android", true),
-            "a8c-secrets CI private key for pocket-casts-android"
+            secret_store_entry_name(&repo_identifier, true),
+            "a8c-secrets CI private key for github.com/automattic/pocket-casts-android"
         );
     }
 
@@ -475,11 +485,13 @@ mod tests {
         let secrets_home = temp.path().join("home").join(".a8c-secrets");
         let secrets_home_str = secrets_home.to_str().unwrap();
         temp_env::with_var("A8C_SECRETS_HOME", Some(secrets_home_str), || {
-            let slug = &format!("save-test-{}", std::process::id());
+            let repo_name = &format!("save-test-{}", std::process::id());
+            let repo_identifier =
+                RepoIdentifier::try_from(format!("github.com/org/{repo_name}")).unwrap();
             let engine = AgeCrateEngine::new();
             let (private, _) = engine.keygen().unwrap();
             let expected_line = private.to_string().expose_secret().to_string();
-            let path = save_private_key(slug, &private).unwrap();
+            let path = save_private_key(&repo_identifier, &private).unwrap();
 
             assert!(path.starts_with(&secrets_home));
             assert!(path.exists());
@@ -508,12 +520,14 @@ mod tests {
         let secrets_home = temp.path().join("home").join(".a8c-secrets");
         let secrets_home_str = secrets_home.to_str().unwrap();
         temp_env::with_var("A8C_SECRETS_HOME", Some(secrets_home_str), || {
-            let slug = &format!("save-overwrite-{}", std::process::id());
+            let repo_name = &format!("save-overwrite-{}", std::process::id());
+            let repo_identifier =
+                RepoIdentifier::try_from(format!("github.com/org/{repo_name}")).unwrap();
             let engine = AgeCrateEngine::new();
             let (key1, _) = engine.keygen().unwrap();
             let (key2, _) = engine.keygen().unwrap();
-            let path1 = save_private_key(slug, &key1).unwrap();
-            let path2 = save_private_key(slug, &key2).unwrap();
+            let path1 = save_private_key(&repo_identifier, &key1).unwrap();
+            let path2 = save_private_key(&repo_identifier, &key2).unwrap();
             assert!(path1.starts_with(&secrets_home));
             assert_eq!(path1, path2);
             assert_eq!(

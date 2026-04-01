@@ -7,7 +7,7 @@ It is aimed to make it easy to deal with secret files that are needed for develo
 Internally, it uses the [`age`](https://age-encryption.org/v1) encryption specification to encrypt/decrypt secret files, and offers some additional key features compared to using [the official `age` binary](https://github.com/FiloSottile/age) directly:
  - It decrypts all the secrets present in a repository using a single `a8c-secrets decrypt` command (compared to having to call the official `age` binary on each file one by one)
  - It automatically manages the public and private keys in the right places on the user's computer (compared to users having to provide the key to the official `age` command line explicitly)
- - It ensures the secrets are decrypted **outside** the repository working tree (in `~/.a8c-secrets/<repo>/`), to avoid accidental commits of secrets and reduce access from AI agents running in repo.
+ - It ensures the secrets are decrypted **outside** the repository working tree (in `~/.a8c-secrets/<host>/<org>/<name>/`), to avoid accidental commits of secrets and reduce access from AI agents running in repo.
  - It provides help messages tailored to our usage of the tool at Automattic (references to Secrets Store, dedicated help messages…)
 
 ## Install
@@ -64,10 +64,9 @@ Run `a8c-secrets manual` for a comprehensive guide, or `a8c-secrets help <comman
 In the repo (committed):              On the developer's machine (never in git):
 
 .a8c-secrets/                          ~/.a8c-secrets/
-├── config.toml         repo slug      ├── keys/
-├── keys.pub            public keys    │   └── <repo>.key    private key (0600)
-├── secret.json.age     encrypted      └── <repo>/           decrypted files
-└── api-keys.yml.age    encrypted          ├── secret.json
+├── keys.pub            public keys    ├── keys/
+├── secret.json.age     encrypted      │   └── <host>/<org>/<name>.key  private key (0600)
+└── api-keys.yml.age    encrypted      └── <host>/<org>/<name>/         decrypted files
                                            └── api-keys.yml
 ```
 
@@ -77,21 +76,21 @@ In the repo (committed):              On the developer's machine (never in git):
 
 **Why `age` as a library, not a CLI subprocess?** Using the [`age` crate](https://docs.rs/age/latest/age/) eliminates the external dependency — users don't need to install `age` separately, and there's no PATH injection risk. The crate implements the same [`age-encryption.org/v1`](https://age-encryption.org/v1) spec as the [Go reference implementation](https://github.com/FiloSottile/age). A trait-based abstraction (`CryptoEngine`) allows swapping to a subprocess engine if ever needed.
 
-**Why decrypt outside the working tree?** Decrypted secrets in `~/.a8c-secrets/<repo>/` can never be accidentally committed (even a `.gitignore` typo can't expose them) and are invisible to AI agents restricted to the repo working copy.
+**Why decrypt outside the working tree?** Decrypted secrets in `~/.a8c-secrets/<host>/<org>/<name>/` can never be accidentally committed (even a `.gitignore` typo can't expose them) and are invisible to AI agents restricted to the repo working copy.
 
 **Two key pairs per repo (dev + CI).** The dev private key is shared by all developers via Secret Store. The CI private key is injected as a Buildkite secret via `A8C_SECRETS_IDENTITY`. Which key is yours is determined by public key derivation (matching your private key against `keys.pub`). Lines starting with `#` in `keys.pub` are comments and are ignored when reading recipients (same as age); they are optional for humans only.
 
-**Secret Store entry names** (human-created; replace `<repo>` with your repo slug): dev private key → `a8c-secrets dev private key for <repo>`; CI private key → `a8c-secrets CI private key for <repo>`.
+**Secret Store entry names** (human-created; replace `<host>/<org>/<name>` with your repo identifier): dev private key → `a8c-secrets dev private key for <host>/<org>/<name>`; CI private key → `a8c-secrets CI private key for <host>/<org>/<name>`.
 
 **Smart encryption.** Since `age` uses random nonces, encrypting identical content twice produces different ciphertext. The `encrypt` command decrypts existing `.age` files in memory and compares byte-for-byte with local plaintext, only re-encrypting when content actually changed. This prevents noisy git diffs. Use `--force` after key rotation.
 
 **Flat file structure.** No subdirectories inside `.a8c-secrets/`. Name collisions (e.g. two `google-services.json` for different modules) are handled with unique flat names like `wear-google-services.json`.
 
-**Secret file names.** Each secret is a single filename (e.g. `Secrets.swift`), not a relative path. The `edit`, `encrypt <file …>`, and `rm` commands reject names that contain path separators, `..`, or other non-flat syntax so outputs stay under `.a8c-secrets/` and `~/.a8c-secrets/<repo>/`.
+**Secret file names.** Each secret is a single filename (e.g. `Secrets.swift`), not a relative path. The `edit`, `encrypt <file …>`, and `rm` commands reject names that contain path separators, `..`, or other non-flat syntax so outputs stay under `.a8c-secrets/` and `~/.a8c-secrets/<host>/<org>/<name>/`.
 
 **Memory hygiene.** Decrypted file contents are held in [`zeroize`](https://docs.rs/zeroize/) buffers where practical so they are cleared when dropped. In-memory private keys are represented as [`age::x25519::Identity`](https://docs.rs/age/latest/age/x25519/struct.Identity.html), which wraps secret material with age’s own zeroizing discipline.
 
-**Decrypt and orphan plaintext.** If a file still exists under `~/.a8c-secrets/<repo>/` but its `.age` was removed from the repository (for example the team deleted a secret from git), `decrypt` reports these as orphans. In an interactive session it asks before deleting the stale local copies. With `--non-interactive`, or when stdin is not a TTY (common in CI), those orphan files are **removed automatically** without a prompt—so CI does not hang waiting for input.
+**Decrypt and orphan plaintext.** If a file still exists under `~/.a8c-secrets/<host>/<org>/<name>/` but its `.age` was removed from the repository (for example the team deleted a secret from git), `decrypt` reports these as orphans. In an interactive session it asks before deleting the stale local copies. With `--non-interactive`, or when stdin is not a TTY (common in CI), those orphan files are **removed automatically** without a prompt—so CI does not hang waiting for input.
 
 ## Key rotation
 

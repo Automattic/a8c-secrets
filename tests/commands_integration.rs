@@ -1178,7 +1178,7 @@ fn rm_fails_without_non_interactive_flag_when_not_tty() {
     let combined = String::from_utf8_lossy(&assert.get_output().stderr).to_string()
         + &String::from_utf8_lossy(&assert.get_output().stdout);
     assert!(
-        combined.contains("not a TTY"),
+        combined.contains("interactive terminal (TTY)") && combined.contains("--non-interactive"),
         "expected non-TTY error in output: {combined}"
     );
     assert!(local_path.exists(), "local file should remain on failed rm");

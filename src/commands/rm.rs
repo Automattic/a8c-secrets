@@ -1,5 +1,6 @@
 use anyhow::Result;
 use inquire::Confirm;
+use std::io::IsTerminal;
 
 use crate::cli::RmArgs;
 use crate::config::{self, REPO_SECRETS_DIR};
@@ -36,13 +37,19 @@ pub fn run(args: &RmArgs) -> Result<()> {
         println!("  {}", age_path.display());
     }
 
-    if !args.non_interactive
-        && !Confirm::new("Proceed?")
+    if !args.non_interactive {
+        if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+            anyhow::bail!(
+                "`a8c-secrets rm` requires an interactive terminal (TTY) unless --non-interactive is provided."
+            );
+        }
+        if !Confirm::new("Proceed?")
             .with_default(false)
             .prompt()
             .map_err(|e| anyhow::anyhow!(e))?
-    {
-        anyhow::bail!("Aborted.");
+        {
+            anyhow::bail!("Aborted.");
+        }
     }
 
     if local_exists {

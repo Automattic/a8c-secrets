@@ -54,14 +54,13 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
     } else {
         let mut selected = Vec::new();
         for f in &args.files {
-            let file_name = SecretFileName::try_from(f.as_str())?;
-            if !decrypted_dir.join(file_name.as_str()).exists() {
+            if !decrypted_dir.join(f.as_str()).exists() {
                 anyhow::bail!(
                     "File not found: {}",
-                    decrypted_dir.join(file_name.as_str()).display()
+                    decrypted_dir.join(f.as_str()).display()
                 );
             }
-            selected.push(file_name);
+            selected.push(f.clone());
         }
         selected
     };

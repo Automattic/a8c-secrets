@@ -43,13 +43,12 @@ fn command_for_editor(editor: &str, file: &Path) -> Result<std::process::Command
 pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
     let repo_root = fs_helpers::find_repo_root()?;
     let repo_identifier = fs_helpers::RepoIdentifier::auto_detect()?;
-    let file_name = fs_helpers::SecretFileName::try_from(args.file.as_str())?;
     let public_keys = keys::load_public_keys(&repo_root)?;
 
     let decrypted_dir = fs_helpers::decrypted_dir(&repo_identifier)?;
     std::fs::create_dir_all(&decrypted_dir)?;
     permissions::set_secure_dir_permissions(&decrypted_dir)?;
-    let decrypted_path = decrypted_dir.join(file_name.as_str());
+    let decrypted_path = decrypted_dir.join(args.file.as_str());
 
     // If file doesn't exist, prompt to create
     if !decrypted_path.exists() {
@@ -94,7 +93,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
     let ciphertext = crypto_engine.encrypt(after.as_slice(), &public_keys)?;
     let age_path = repo_root
         .join(REPO_SECRETS_DIR)
-        .join(format!("{file_name}.age"));
+        .join(format!("{}.age", args.file));
     fs_helpers::atomic_write(&age_path, &ciphertext)?;
 
     println!("Encrypted {}", args.file);

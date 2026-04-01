@@ -1,5 +1,6 @@
 use anyhow::Result;
 use std::fmt;
+use std::str::FromStr;
 
 use crate::fs_helpers::validate_single_path_segment;
 
@@ -34,6 +35,14 @@ impl TryFrom<&str> for SecretFileName {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         Self::try_from(value.to_string())
+    }
+}
+
+impl FromStr for SecretFileName {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::try_from(s)
     }
 }
 

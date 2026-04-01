@@ -14,12 +14,11 @@ use crate::fs_helpers::{self, REPO_SECRETS_DIR};
 pub fn run(args: &RmArgs) -> Result<()> {
     let repo_root = fs_helpers::find_repo_root()?;
     let repo_identifier = fs_helpers::RepoIdentifier::auto_detect()?;
-    let file_name = fs_helpers::SecretFileName::try_from(args.file.as_str())?;
 
-    let decrypted_path = fs_helpers::decrypted_dir(&repo_identifier)?.join(file_name.as_str());
+    let decrypted_path = fs_helpers::decrypted_dir(&repo_identifier)?.join(args.file.as_str());
     let age_path = repo_root
         .join(REPO_SECRETS_DIR)
-        .join(format!("{file_name}.age"));
+        .join(format!("{}.age", args.file));
 
     let decrypted_exists = decrypted_path.exists();
     let age_exists = age_path.exists();

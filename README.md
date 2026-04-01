@@ -106,7 +106,7 @@ On employee offboarding (or when rotating CI’s key):
 
 | Variable | Description |
 |---|---|
-| `A8C_SECRETS_IDENTITY` | Private key override. If value starts with `AGE-SECRET-KEY-`, used directly in memory. Otherwise treated as a file path. Intended for CI. |
+| `A8C_SECRETS_IDENTITY` | Private key override as `AGE-SECRET-KEY-...` text, used directly in memory. Intended for CI. |
 | `EDITOR` | Editor for the `edit` command. Parsed like shell words, so the command may include arguments (e.g. `code --wait`) or a quoted path with spaces. Default: `vi` (Unix) or `notepad` (Windows). |
 
 ## Development

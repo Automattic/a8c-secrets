@@ -123,9 +123,9 @@ KEY MANAGEMENT
 
 ENVIRONMENT VARIABLES
     A8C_SECRETS_IDENTITY
-        Override the private key. If the value starts with AGE-SECRET-KEY-,
-        it is used directly in memory (never written to disk). Otherwise it
-        is treated as a file path. Intended for CI environments.
+        Override the private key using an AGE-SECRET-KEY-... string.
+        The value is used directly in memory (never written to disk).
+        Intended for CI environments.
 
     EDITOR
         Editor for the `edit` command. Parsed like shell words (program plus

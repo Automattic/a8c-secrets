@@ -35,7 +35,7 @@ pub fn secret_store_entry_name(repo_identifier: &RepoIdentifier, for_ci: bool) -
 pub fn print_private_key_to_stdout(title: &str, key: &PrivateKey) -> Result<()> {
     let key_text = Zeroizing::new(format!("{}\n", key.to_string().expose_secret()));
     let mut out = std::io::stdout().lock();
-    writeln!(out, "--- {title} ---")?;
+    writeln!(out, "=== {title} ===")?;
     out.write_all(key_text.as_bytes())?;
     writeln!(out)?;
     Ok(())
@@ -74,19 +74,12 @@ fn parse_private_key_trimmed(label: &str, raw: &str) -> Result<PrivateKey> {
 ///
 /// # Errors
 ///
-/// Returns an error if the env var points to an unreadable file, if the key
-/// file cannot be read, or if no key is configured.
+/// Returns an error if the env var is not a valid private key string, if the
+/// key file cannot be read, or if no key is configured.
 pub fn get_private_key(repo_identifier: &RepoIdentifier) -> Result<PrivateKey> {
     if let Ok(raw_val) = std::env::var("A8C_SECRETS_IDENTITY") {
         let val = Zeroizing::new(raw_val);
-        if val.starts_with("AGE-SECRET-KEY-") {
-            return parse_private_key_trimmed("A8C_SECRETS_IDENTITY", val.as_str());
-        }
-        let contents = Zeroizing::new(
-            std::fs::read_to_string(val.as_str())
-                .with_context(|| format!("Failed to read identity file: {}", val.as_str()))?,
-        );
-        return parse_private_key_trimmed(val.as_str(), contents.as_str());
+        return parse_private_key_trimmed("A8C_SECRETS_IDENTITY", val.as_str());
     }
     let path = private_key_path(repo_identifier)?;
     let contents = Zeroizing::new(std::fs::read_to_string(&path).with_context(|| {

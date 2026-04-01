@@ -66,7 +66,11 @@ fn local_key_path(home_dir: &Path, repo_name: &str) -> PathBuf {
     let mut path = secrets_home(home_dir)
         .join("keys")
         .join(repo_identifier(repo_name));
-    path.set_extension("key");
+    if let Some(file_name) = path.file_name() {
+        let mut new_name = file_name.to_os_string();
+        new_name.push(".key");
+        path.set_file_name(new_name);
+    }
     path
 }
 

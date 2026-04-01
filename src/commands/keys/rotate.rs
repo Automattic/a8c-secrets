@@ -260,6 +260,7 @@ mod tests {
     use super::apply_key_rotation;
     use crate::config::{self, REPO_SECRETS_DIR};
     use crate::crypto::{AgeCrateEngine, PrivateKey, PublicKey};
+    use crate::keys;
     use serial_test::serial;
 
     fn encrypt_for_recipients(recipients: &[PublicKey], plaintext: &[u8]) -> Vec<u8> {
@@ -312,9 +313,7 @@ mod tests {
             let ci_public = ci_identity.to_public().to_string();
             write_keys_pub(repo_dir.path(), &old_dev_public, &ci_public);
 
-            let key_path = secrets_home
-                .join("keys")
-                .join("github.com/org/demo-repo.key");
+            let key_path = keys::private_key_path(&repo_identifier).unwrap();
             fs::create_dir_all(key_path.parent().unwrap()).unwrap();
             fs::write(
                 &key_path,
@@ -399,9 +398,7 @@ mod tests {
             let ci_public = ci_identity.to_public().to_string();
             write_keys_pub(repo_dir.path(), &old_dev_public, &ci_public);
 
-            let key_path = secrets_home
-                .join("keys")
-                .join("github.com/org/demo-repo.key");
+            let key_path = keys::private_key_path(&repo_identifier).unwrap();
             fs::create_dir_all(key_path.parent().unwrap()).unwrap();
             fs::write(
                 &key_path,

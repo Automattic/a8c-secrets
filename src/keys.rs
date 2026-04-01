@@ -49,7 +49,11 @@ pub fn private_key_path(repo_identifier: &RepoIdentifier) -> Result<PathBuf> {
     let mut key_path = config::secrets_home()?
         .join("keys")
         .join(repo_identifier.as_path());
-    key_path.set_extension("key");
+    if let Some(file_name) = key_path.file_name() {
+        let mut new_name = file_name.to_os_string();
+        new_name.push(".key");
+        key_path.set_file_name(new_name);
+    }
     Ok(key_path)
 }
 
@@ -476,6 +480,24 @@ mod tests {
         assert_eq!(keys, vec![new1.clone(), new1.clone()]);
         let raw = fs::read_to_string(public_keys_path(dir.path())).unwrap();
         assert!(!raw.contains(&pub1.to_string()));
+    }
+
+    #[test]
+    #[serial(a8c_secrets_home)]
+    fn private_key_path_appends_key_extension_without_replacing_dots() {
+        let temp = tempfile::tempdir().unwrap();
+        let secrets_home = temp.path().join(".a8c-secrets");
+        let secrets_home_str = secrets_home.to_str().unwrap();
+        temp_env::with_var("A8C_SECRETS_HOME", Some(secrets_home_str), || {
+            let repo_identifier =
+                RepoIdentifier::try_from("github.com/org/my.repo".to_string()).unwrap();
+            let path = private_key_path(&repo_identifier).unwrap();
+            let file_name = path.file_name().unwrap().to_string_lossy();
+            assert_eq!(
+                file_name, "my.repo.key",
+                "repo name with dots should end in .key not replace the dot extension"
+            );
+        });
     }
 
     #[test]

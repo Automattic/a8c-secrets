@@ -35,7 +35,7 @@ pub fn secret_store_entry_name(repo_identifier: &RepoIdentifier, for_ci: bool) -
 pub fn print_private_key_to_stdout(title: &str, key: &PrivateKey) -> Result<()> {
     let key_text = Zeroizing::new(format!("{}\n", key.to_string().expose_secret()));
     let mut out = std::io::stdout().lock();
-    writeln!(out, "--- {title} ---")?;
+    writeln!(out, "=== {title} ===")?;
     out.write_all(key_text.as_bytes())?;
     writeln!(out)?;
     Ok(())

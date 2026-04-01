@@ -10,8 +10,8 @@ use crate::crypto::CryptoEngine;
 use crate::keys;
 use crate::permissions;
 
-fn compute_orphans(local_files: &[String], age_files: &BTreeSet<String>) -> Vec<String> {
-    local_files
+fn compute_orphans(decrypted_files: &[String], age_files: &BTreeSet<String>) -> Vec<String> {
+    decrypted_files
         .iter()
         .filter(|f| !age_files.contains(*f))
         .cloned()
@@ -85,7 +85,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
         out_dir.display()
     );
 
-    // Orphan detection: local files with no corresponding .age
+    // Orphan detection: decrypted files with no corresponding .age
     handle_orphans(&repo_identifier, &age_files, interactive)?;
 
     if decrypt_failures > 0 {
@@ -98,14 +98,14 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
     Ok(())
 }
 
-/// Detect and handle orphan files (local plaintext with no .age counterpart).
+/// Detect and handle orphan files (decrypted files with no .age counterpart).
 fn handle_orphans(
     repo_identifier: &config::RepoIdentifier,
     age_files: &BTreeSet<String>,
     interactive: bool,
 ) -> Result<()> {
-    let local_files = config::list_local_files(repo_identifier)?;
-    let orphans = compute_orphans(&local_files, age_files);
+    let decrypted_files = config::list_decrypted_files(repo_identifier)?;
+    let orphans = compute_orphans(&decrypted_files, age_files);
 
     if orphans.is_empty() {
         return Ok(());
@@ -146,22 +146,22 @@ mod tests {
     use std::collections::BTreeSet;
 
     #[test]
-    fn compute_orphans_returns_only_local_without_age_match() {
-        let local = vec![
+    fn compute_orphans_returns_only_decrypted_without_age_match() {
+        let decrypted = vec![
             "a.json".to_string(),
             "b.yml".to_string(),
             "c.toml".to_string(),
         ];
         let age = BTreeSet::from(["a.json".to_string(), "c.toml".to_string()]);
-        let orphans = compute_orphans(&local, &age);
+        let orphans = compute_orphans(&decrypted, &age);
         assert_eq!(orphans, vec!["b.yml"]);
     }
 
     #[test]
-    fn compute_orphans_empty_when_all_local_files_have_age_match() {
-        let local = vec!["a.json".to_string(), "b.yml".to_string()];
+    fn compute_orphans_empty_when_all_decrypted_files_have_age_match() {
+        let decrypted = vec!["a.json".to_string(), "b.yml".to_string()];
         let age = BTreeSet::from(["a.json".to_string(), "b.yml".to_string()]);
-        let orphans = compute_orphans(&local, &age);
+        let orphans = compute_orphans(&decrypted, &age);
         assert!(orphans.is_empty());
     }
 }

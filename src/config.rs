@@ -263,16 +263,16 @@ pub fn list_age_files(repo_root: &Path) -> Result<Vec<String>> {
     Ok(names)
 }
 
-/// List plaintext files in `~/.a8c-secrets/<host>/<org>/<name>/`.
+/// List decrypted files in `~/.a8c-secrets/<host>/<org>/<name>/`.
 ///
 /// Each file name must pass [`validate_secret_basename`], matching rules for
 /// secret basenames under `.a8c-secrets/`.
 ///
 /// # Errors
 ///
-/// Returns an error if the local decrypted directory exists but cannot be read,
+/// Returns an error if the decrypted directory exists but cannot be read,
 /// or if a file name is not a valid flat basename.
-pub fn list_local_files(repo_identifier: &RepoIdentifier) -> Result<Vec<String>> {
+pub fn list_decrypted_files(repo_identifier: &RepoIdentifier) -> Result<Vec<String>> {
     let dir = decrypted_dir(repo_identifier)?;
     let mut names = Vec::new();
     if !dir.exists() {

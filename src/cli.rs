@@ -62,7 +62,7 @@ ENVIRONMENT:
 Encrypt secret files from ~/.a8c-secrets/<host>/<org>/<name>/ into .a8c-secrets/*.age.
 
 Uses smart comparison by default: decrypts existing .age files in memory and
-compares byte-for-byte with the local plaintext. Only re-encrypts if content
+compares byte-for-byte against decrypted plaintext files. Only re-encrypts if content
 differs. This avoids noisy git diffs since age uses random nonces (encrypting
 the same content twice produces different ciphertext).
 
@@ -122,10 +122,10 @@ Show the sync status of all secret files.
 
 Displays the repo identifier, how many public keys were read from keys.pub (2 expected),
 private key status, and each file's sync state:
-  \u{2713}  in sync         — local plaintext matches encrypted .age content
-  \u{26a0}  modified locally — plaintext differs from .age (needs encrypt)
-  \u{2739}  local only       — no .age file in repo (new, needs encrypt)
-  \u{25c7}  encrypted only   — no local plaintext (needs decrypt)")]
+  \u{2713}  in sync                — decrypted plaintext matches encrypted .age content
+  \u{26a0}  modified decrypted copy — plaintext differs from .age (needs encrypt)
+  \u{2739}  decrypted only          — no .age file in repo (new, needs encrypt)
+  \u{25c7}  encrypted only          — no decrypted plaintext (needs decrypt)")]
     Status,
 
     /// Key management (show, import, rotate)

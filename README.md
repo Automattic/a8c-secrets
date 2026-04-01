@@ -82,7 +82,7 @@ In the repo (committed):              On the developer's machine (never in git):
 
 **Secret Store entry names** (human-created; replace `<host>/<org>/<name>` with your repo identifier): dev private key → `a8c-secrets dev private key for <host>/<org>/<name>`; CI private key → `a8c-secrets CI private key for <host>/<org>/<name>`.
 
-**Smart encryption.** Since `age` uses random nonces, encrypting identical content twice produces different ciphertext. The `encrypt` command decrypts existing `.age` files in memory and compares byte-for-byte with local plaintext, only re-encrypting when content actually changed. This prevents noisy git diffs. Use `--force` after key rotation.
+**Smart encryption.** Since `age` uses random nonces, encrypting identical content twice produces different ciphertext. The `encrypt` command decrypts existing `.age` files in memory and compares byte-for-byte with decrypted plaintext, only re-encrypting when content actually changed. This prevents noisy git diffs. Use `--force` after key rotation.
 
 **Flat file structure.** No subdirectories inside `.a8c-secrets/`. Name collisions (e.g. two `google-services.json` for different modules) are handled with unique flat names like `wear-google-services.json`.
 

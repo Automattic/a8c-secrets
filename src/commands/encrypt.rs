@@ -12,19 +12,19 @@ fn should_attempt_smart_compare(force: bool, has_private_key: bool, age_exists: 
     !force && has_private_key && age_exists
 }
 
-fn collect_missing_local_warnings(
+fn collect_missing_decrypted_warnings(
     age_files: &[String],
-    local_files: &BTreeSet<String>,
+    decrypted_files: &BTreeSet<String>,
     files_to_consider: &BTreeSet<String>,
 ) -> Vec<String> {
     age_files
         .iter()
-        .filter(|name| !local_files.contains(*name) && !files_to_consider.contains(*name))
+        .filter(|name| !decrypted_files.contains(*name) && !files_to_consider.contains(*name))
         .cloned()
         .collect()
 }
 
-/// Encrypt local plaintext secret files back into repository `.age` files.
+/// Encrypt decrypted plaintext secret files back into repository `.age` files.
 ///
 /// # Errors
 ///
@@ -38,19 +38,19 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
     let public_keys = keys::load_public_keys(&repo_root)?;
 
     let secrets_dir = repo_root.join(REPO_SECRETS_DIR);
-    let local_dir = config::decrypted_dir(&repo_identifier)?;
+    let decrypted_dir = config::decrypted_dir(&repo_identifier)?;
 
-    if !local_dir.exists() {
+    if !decrypted_dir.exists() {
         anyhow::bail!(
             "No decrypted files directory at {}. Run `a8c-secrets decrypt` first.",
-            local_dir.display()
+            decrypted_dir.display()
         );
     }
 
     // Determine which files to consider (validate basenames before existence
     // checks so path-like arguments fail with a clear error, not "file not found")
     let files_to_consider = if args.files.is_empty() {
-        let names = config::list_local_files(&repo_identifier)?;
+        let names = config::list_decrypted_files(&repo_identifier)?;
         for name in &names {
             config::validate_secret_basename(name)?;
         }
@@ -58,8 +58,8 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
     } else {
         for f in &args.files {
             config::validate_secret_basename(f)?;
-            if !local_dir.join(f).exists() {
-                anyhow::bail!("File not found: {}", local_dir.join(f).display());
+            if !decrypted_dir.join(f).exists() {
+                anyhow::bail!("File not found: {}", decrypted_dir.join(f).display());
             }
         }
         args.files.clone()
@@ -91,12 +91,12 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
     let mut skipped_count = 0;
 
     for name in &files_to_consider {
-        let local_path = local_dir.join(name);
+        let decrypted_path = decrypted_dir.join(name);
         let age_path = secrets_dir.join(format!("{name}.age"));
 
-        let local_content = Zeroizing::new(
-            std::fs::read(&local_path)
-                .with_context(|| format!("Failed to read {}", local_path.display()))?,
+        let decrypted_content = Zeroizing::new(
+            std::fs::read(&decrypted_path)
+                .with_context(|| format!("Failed to read {}", decrypted_path.display()))?,
         );
 
         // Smart comparison: if .age exists and we have a private key, decrypt and compare
@@ -105,7 +105,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
         {
             let ciphertext = std::fs::read(&age_path)?;
             match crypto_engine.decrypt(&ciphertext, key) {
-                Ok(decrypted) if decrypted.as_slice() == local_content.as_slice() => {
+                Ok(decrypted) if decrypted.as_slice() == decrypted_content.as_slice() => {
                     println!("  {name} — unchanged, skipping");
                     skipped_count += 1;
                     continue;
@@ -121,7 +121,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
 
         // Encrypt
         let existed = age_path.exists();
-        let ciphertext = crypto_engine.encrypt(local_content.as_slice(), &public_keys)?;
+        let ciphertext = crypto_engine.encrypt(decrypted_content.as_slice(), &public_keys)?;
         config::atomic_write(&age_path, &ciphertext)?;
         if existed && !args.force {
             println!("  {name} — modified, encrypting");
@@ -131,14 +131,14 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
         encrypted_count += 1;
     }
 
-    // Check for missing local files (age exists but no plaintext)
+    // Check for missing decrypted files (age exists but no plaintext)
     let age_files = config::list_age_files(&repo_root)?;
-    let local_set: BTreeSet<String> = config::list_local_files(&repo_identifier)?
+    let decrypted_set: BTreeSet<String> = config::list_decrypted_files(&repo_identifier)?
         .into_iter()
         .collect();
     let consider_set: BTreeSet<String> = files_to_consider.into_iter().collect();
-    for name in collect_missing_local_warnings(&age_files, &local_set, &consider_set) {
-        eprintln!("  {name} — warning: .age exists but no local plaintext, skipping");
+    for name in collect_missing_decrypted_warnings(&age_files, &decrypted_set, &consider_set) {
+        eprintln!("  {name} — warning: .age exists but no decrypted plaintext, skipping");
     }
 
     println!();
@@ -152,7 +152,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{collect_missing_local_warnings, should_attempt_smart_compare};
+    use super::{collect_missing_decrypted_warnings, should_attempt_smart_compare};
     use std::collections::BTreeSet;
 
     #[test]
@@ -164,16 +164,17 @@ mod tests {
     }
 
     #[test]
-    fn collect_missing_local_warnings_excludes_considered_files() {
+    fn collect_missing_decrypted_warnings_excludes_considered_files() {
         let age_files = vec![
             "a.json".to_string(),
             "b.yml".to_string(),
             "c.toml".to_string(),
         ];
-        let local_files = BTreeSet::from(["a.json".to_string()]);
+        let decrypted_files = BTreeSet::from(["a.json".to_string()]);
         let files_to_consider = BTreeSet::from(["b.yml".to_string()]);
 
-        let warnings = collect_missing_local_warnings(&age_files, &local_files, &files_to_consider);
+        let warnings =
+            collect_missing_decrypted_warnings(&age_files, &decrypted_files, &files_to_consider);
         assert_eq!(warnings, vec!["c.toml"]);
     }
 }

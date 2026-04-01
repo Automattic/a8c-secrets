@@ -4,8 +4,8 @@ use anyhow::{Context, Result};
 use inquire::Confirm;
 
 use crate::cli::EditArgs;
-use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::CryptoEngine;
+use crate::fs_helpers::{self, REPO_SECRETS_DIR};
 use crate::keys;
 use crate::permissions;
 use zeroize::Zeroizing;
@@ -41,12 +41,12 @@ fn command_for_editor(editor: &str, file: &Path) -> Result<std::process::Command
 /// the editor fails, the editor exits unsuccessfully, or encryption/write
 /// operations fail.
 pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
-    let repo_root = config::find_repo_root()?;
-    let repo_identifier = config::RepoIdentifier::auto_detect()?;
-    let file_name = config::SecretFileName::try_from(args.file.as_str())?;
+    let repo_root = fs_helpers::find_repo_root()?;
+    let repo_identifier = fs_helpers::RepoIdentifier::auto_detect()?;
+    let file_name = fs_helpers::SecretFileName::try_from(args.file.as_str())?;
     let public_keys = keys::load_public_keys(&repo_root)?;
 
-    let decrypted_dir = config::decrypted_dir(&repo_identifier)?;
+    let decrypted_dir = fs_helpers::decrypted_dir(&repo_identifier)?;
     std::fs::create_dir_all(&decrypted_dir)?;
     permissions::set_secure_dir_permissions(&decrypted_dir)?;
     let decrypted_path = decrypted_dir.join(file_name.as_str());
@@ -95,7 +95,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
     let age_path = repo_root
         .join(REPO_SECRETS_DIR)
         .join(format!("{file_name}.age"));
-    config::atomic_write(&age_path, &ciphertext)?;
+    fs_helpers::atomic_write(&age_path, &ciphertext)?;
 
     println!("Encrypted {}", args.file);
     println!("Remember to commit {}/{}.age", REPO_SECRETS_DIR, args.file);

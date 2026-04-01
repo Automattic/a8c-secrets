@@ -1,7 +1,7 @@
 //! Local private keys, `.a8c-secrets/keys.pub` recipients, and Secret Store naming.
 //!
-//! Repository layout and paths under [`crate::config::REPO_SECRETS_DIR`] are defined in
-//! the [`config`](crate::config) module; this module owns age key material and `keys.pub` parsing.
+//! Repository layout and paths under [`crate::fs_helpers::REPO_SECRETS_DIR`] are defined in
+//! the [`config`](crate::fs_helpers) module; this module owns age key material and `keys.pub` parsing.
 
 use age::secrecy::ExposeSecret;
 use anyhow::{Context, Result};
@@ -11,8 +11,8 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use zeroize::Zeroizing;
 
-use crate::config::{self, REPO_SECRETS_DIR, RepoIdentifier};
 use crate::crypto::{PrivateKey, PublicKey};
+use crate::fs_helpers::{self, REPO_SECRETS_DIR, RepoIdentifier};
 use crate::permissions;
 
 /// Base URL for Secret Store (browse / create entries).
@@ -47,7 +47,7 @@ pub fn print_private_key_to_stdout(title: &str, key: &PrivateKey) -> Result<()> 
 ///
 /// Returns an error if the local secrets home directory cannot be determined.
 pub fn private_key_path(repo_identifier: &RepoIdentifier) -> Result<PathBuf> {
-    let mut key_path = config::secrets_home()?
+    let mut key_path = fs_helpers::secrets_home()?
         .join("keys")
         .join(repo_identifier.as_path());
     if let Some(file_name) = key_path.file_name() {
@@ -95,7 +95,7 @@ pub fn get_private_key(repo_identifier: &RepoIdentifier) -> Result<PrivateKey> {
 ///
 /// The parent directory ACL is applied immediately after ensuring the directory
 /// tree exists, including when the directory already existed (e.g. created
-/// manually with wrong permissions). The key is written via [`config::atomic_write`].
+/// manually with wrong permissions). The key is written via [`fs_helpers::atomic_write`].
 ///
 /// On Windows, replacing an existing key file in place can fail with
 /// `ERROR_ACCESS_DENIED` once the parent uses a protected owner-only DACL
@@ -137,7 +137,7 @@ pub fn save_private_key(
         let private_key_string = private_key.to_string();
         Zeroizing::new(format!("{}\n", private_key_string.expose_secret()))
     };
-    config::atomic_write(&key_path, line.as_bytes())
+    fs_helpers::atomic_write(&key_path, line.as_bytes())
         .with_context(|| format!("Failed to write private key to {}", key_path.display()))?;
 
     permissions::set_secure_file_permissions(&key_path).with_context(|| {
@@ -294,7 +294,7 @@ pub fn replace_recipient_public_key_in_keys_pub(
         new_content.push('\n');
     }
 
-    config::atomic_write(&path, new_content.as_bytes())
+    fs_helpers::atomic_write(&path, new_content.as_bytes())
         .with_context(|| format!("Failed to write {}", path.display()))?;
     Ok(())
 }

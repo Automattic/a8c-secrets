@@ -3,7 +3,7 @@ use std::fmt;
 use std::path::Path;
 use url::Url;
 
-use super::validate_single_path_segment;
+use crate::fs_helpers::validate_single_path_segment;
 
 /// Validated repository identifier (`host/org/repo`) used for local paths and key names.
 #[derive(Debug, Clone, PartialEq, Eq)]

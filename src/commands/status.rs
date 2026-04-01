@@ -2,8 +2,8 @@ use std::collections::BTreeSet;
 
 use anyhow::Result;
 
-use crate::config::{self, REPO_SECRETS_DIR, SecretFileName};
 use crate::crypto::CryptoEngine;
+use crate::fs_helpers::{self, REPO_SECRETS_DIR, SecretFileName};
 use crate::keys;
 use zeroize::Zeroizing;
 
@@ -24,8 +24,8 @@ const EXPECTED_PUBLIC_KEYS: usize = 2;
 /// Returns an error if repo/config discovery fails, file lists cannot be read,
 /// file contents cannot be read, or decrypt/compare operations fail.
 pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
-    let repo_root = config::find_repo_root()?;
-    let repo_identifier = config::RepoIdentifier::auto_detect()?;
+    let repo_root = fs_helpers::find_repo_root()?;
+    let repo_identifier = fs_helpers::RepoIdentifier::auto_detect()?;
 
     println!("Repo: {repo_identifier}");
 
@@ -70,11 +70,13 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     println!();
 
     // Collect all known file names from both sides
-    let age_files: BTreeSet<SecretFileName> =
-        config::list_age_files(&repo_root)?.into_iter().collect();
-    let decrypted_files: BTreeSet<SecretFileName> = config::list_decrypted_files(&repo_identifier)?
+    let age_files: BTreeSet<SecretFileName> = fs_helpers::list_age_files(&repo_root)?
         .into_iter()
         .collect();
+    let decrypted_files: BTreeSet<SecretFileName> =
+        fs_helpers::list_decrypted_files(&repo_identifier)?
+            .into_iter()
+            .collect();
     let all_files = collect_all_files(&age_files, &decrypted_files);
 
     if all_files.is_empty() {
@@ -83,7 +85,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     }
 
     let secrets_dir = repo_root.join(REPO_SECRETS_DIR);
-    let decrypted_dir = config::decrypted_dir(&repo_identifier)?;
+    let decrypted_dir = fs_helpers::decrypted_dir(&repo_identifier)?;
 
     println!("Files:");
     for name in &all_files {
@@ -126,7 +128,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::collect_all_files;
-    use crate::config::SecretFileName;
+    use crate::fs_helpers::SecretFileName;
     use std::collections::BTreeSet;
 
     #[test]

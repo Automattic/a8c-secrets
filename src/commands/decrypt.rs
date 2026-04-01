@@ -5,8 +5,8 @@ use anyhow::{Context, Result};
 use inquire::Confirm;
 
 use crate::cli::DecryptArgs;
-use crate::config::{self, REPO_SECRETS_DIR, SecretFileName};
 use crate::crypto::CryptoEngine;
+use crate::fs_helpers::{self, REPO_SECRETS_DIR, SecretFileName};
 use crate::keys;
 use crate::permissions;
 
@@ -32,15 +32,16 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
     let interactive =
         !args.non_interactive && io::stdin().is_terminal() && io::stdout().is_terminal();
 
-    let repo_root = config::find_repo_root()?;
-    let age_files: BTreeSet<SecretFileName> =
-        config::list_age_files(&repo_root)?.into_iter().collect();
+    let repo_root = fs_helpers::find_repo_root()?;
+    let age_files: BTreeSet<SecretFileName> = fs_helpers::list_age_files(&repo_root)?
+        .into_iter()
+        .collect();
 
     if age_files.is_empty() {
         println!("No .age files found in {REPO_SECRETS_DIR}/");
         return Ok(());
     }
-    let repo_identifier = config::RepoIdentifier::auto_detect()?;
+    let repo_identifier = fs_helpers::RepoIdentifier::auto_detect()?;
 
     // Get or prompt for private key
     let private_key = match keys::get_private_key(&repo_identifier) {
@@ -53,7 +54,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
     };
 
     // Ensure output directory exists with correct permissions
-    let out_dir = config::decrypted_dir(&repo_identifier)?;
+    let out_dir = fs_helpers::decrypted_dir(&repo_identifier)?;
     std::fs::create_dir_all(&out_dir)?;
     permissions::set_secure_dir_permissions(&out_dir)?;
 
@@ -70,7 +71,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
 
         match crypto_engine.decrypt(&ciphertext, &private_key) {
             Ok(plaintext) => {
-                config::atomic_write(&out_path, plaintext.as_slice())?;
+                fs_helpers::atomic_write(&out_path, plaintext.as_slice())?;
                 permissions::set_secure_file_permissions(&out_path)?;
                 println!("  {name} — decrypted");
                 decrypted_count += 1;
@@ -104,11 +105,11 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
 
 /// Detect and handle orphan files (decrypted files with no .age counterpart).
 fn handle_orphans(
-    repo_identifier: &config::RepoIdentifier,
+    repo_identifier: &fs_helpers::RepoIdentifier,
     age_files: &BTreeSet<SecretFileName>,
     interactive: bool,
 ) -> Result<()> {
-    let decrypted_files = config::list_decrypted_files(repo_identifier)?;
+    let decrypted_files = fs_helpers::list_decrypted_files(repo_identifier)?;
     let orphans = compute_orphans(&decrypted_files, age_files);
 
     if orphans.is_empty() {
@@ -132,7 +133,7 @@ fn handle_orphans(
     };
 
     if should_remove {
-        let out_dir = config::decrypted_dir(repo_identifier)?;
+        let out_dir = fs_helpers::decrypted_dir(repo_identifier)?;
         for name in &orphans {
             let path = out_dir.join(name.as_str());
             std::fs::remove_file(&path)
@@ -147,7 +148,7 @@ fn handle_orphans(
 #[cfg(test)]
 mod tests {
     use super::compute_orphans;
-    use crate::config::SecretFileName;
+    use crate::fs_helpers::SecretFileName;
     use std::collections::BTreeSet;
 
     #[test]

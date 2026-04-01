@@ -251,8 +251,13 @@ mod tests {
 
         atomic_write(&path, b"hello").unwrap();
         assert_eq!(fs::read(&path).unwrap(), b"hello");
-        // Temp file should not remain
-        assert!(!dir.path().join("output.tmp").exists());
+        // Temp files used during atomic write should not remain in the target directory.
+        let entries: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .collect();
+        assert_eq!(entries.len(), 1, "unexpected extra files left in temp dir");
+        assert_eq!(entries[0].file_name().to_str(), Some("output.txt"));
     }
 
     #[test]

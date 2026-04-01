@@ -1,7 +1,7 @@
 //! Local private keys, `.a8c-secrets/keys.pub` recipients, and Secret Store naming.
 //!
 //! Repository layout and paths under [`crate::fs_helpers::REPO_SECRETS_DIR`] are defined in
-//! the [`config`](crate::fs_helpers) module; this module owns age key material and `keys.pub` parsing.
+//! the [`fs_helpers`](crate::fs_helpers) module; this module owns age key material and `keys.pub` parsing.
 
 use age::secrecy::ExposeSecret;
 use anyhow::{Context, Result};

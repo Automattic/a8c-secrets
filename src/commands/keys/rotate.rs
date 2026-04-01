@@ -39,11 +39,23 @@ fn confirm_rotation() -> Result<()> {
 
 fn print_rotation_reminder() {
     println!();
+    println!("Before you rotate — recommended order:");
+    println!();
     println!(
-        "Reminder: before you rotate the encryption keys used to encrypt your secret files, \
-         be sure to manually rotate the contents of those secret files first (e.g. your API keys \
-         and such that those secret files contain), so that people who had the old key and could \
-         decrypt secret files from past commits cannot use those secrets anymore."
+        "  • Run `keys rotate` (this flow) before you `encrypt` and push new provider/API secrets, \
+         so new material is not encrypted to people who still have the old dev key."
+    );
+    println!();
+    println!(
+        "  • Revoke or disable old credentials at each provider as soon as your runbook allows; \
+         rotating age keys does not expire API keys by itself."
+    );
+    println!();
+    println!(
+        "  • This command only re-wraps each committed `.age` file under `.a8c-secrets/` (read from \
+         disk, decrypt, encrypt to the updated keys.pub). It does not read ~/.a8c-secrets/. If \
+         local plaintext is ahead of `.age`, run `encrypt` after rotation when you want that \
+         content in git — otherwise git diffs here are crypto-only, not your pending plaintext edits."
     );
     println!();
     println!("{PUBLIC_KEY_LIST_LEGEND}");
@@ -85,6 +97,9 @@ fn print_confirmation_plan(
         for name in age_files {
             println!("     - {name}.age");
         }
+        println!(
+            "     (Each step uses the existing `.age` file on disk, not plaintext under ~/.a8c-secrets/.)"
+        );
     }
     println!(" - Print the new private key to stdout");
     println!();
@@ -123,8 +138,9 @@ fn print_confirmation_plan(
 /// disk again after updating `keys.pub`.
 ///
 /// `private_key_for_decrypt` is the caller’s current age identity (typically from
-/// [`keys::get_private_key`]). It is used to decrypt existing `.age` files before re-encrypting
-/// them. When `old_public_key` is the public key derived from this same identity, the local
+/// [`keys::get_private_key`]). It is used to decrypt **committed** `.age` files under
+/// `.a8c-secrets/` before re-encrypting them — not files under `~/.a8c-secrets/`.
+/// When `old_public_key` is the public key derived from this same identity, the local
 /// key file is updated with the newly generated private key.
 ///
 /// Used by [`run`] and by unit tests (inquire’s `Select`/`Confirm` prompts are not wired for
@@ -171,7 +187,12 @@ pub(crate) fn apply_key_rotation(
     println!();
     keys::print_private_key_to_stdout("New private key", &new_private_key)?;
 
-    println!("NOTE: This does not rotate the actual secret values inside the encrypted files.");
+    println!(
+        "NOTE: Only ciphertext already in each `.age` file was re-wrapped; ~/.a8c-secrets was not read."
+    );
+    println!(
+        "NOTE: Rotate provider/API secrets separately as needed, then `a8c-secrets encrypt` (often `--force`) when committing new secret content."
+    );
 
     Ok(())
 }

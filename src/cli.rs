@@ -211,15 +211,17 @@ key for this repo identifier.")]
 Rotate one recipient in keys.pub: pick which public key to replace from an
 interactive list, confirm with y/N, then generate a new key pair, update keys.pub in place
 (preserving comments), and re-encrypt each .age file under .a8c-secrets/
-(decrypt with your current private key in memory, then encrypt to the
-updated recipient list).
+(decrypt the existing file from disk with your current private key in memory, then encrypt to the
+updated recipient list). Does not read ~/.a8c-secrets plaintext.
 
 Requires a local private key that matches at least one line in keys.pub.
 After rotation, prints the new private key and next steps (Secret Store /
 CI secrets depending on whether you rotated the key you hold locally).
 
-NOTE: Key rotation does NOT rotate the actual secret values inside the
-encrypted files. You must separately rotate API keys, tokens, etc.
+Recommended: run this before encrypting and pushing new provider/API secrets, so new material
+is not encrypted to recipients who should no longer have the old dev key. Still revoke or
+replace credentials at each provider as your process requires — this command does not expire
+API keys. After rotation, update secret file content and run encrypt (often --force).
 
 Requires stdout connected to a terminal so the new private key is shown on screen
 (do not redirect stdout). Requires stdin connected to a terminal for interactive prompts.",

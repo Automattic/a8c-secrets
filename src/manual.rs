@@ -127,11 +127,20 @@ KEY MANAGEMENT
     (same as age recipient files); they are optional human notes only.
 
     Key rotation (employee offboarding):
-        1. a8c-secrets keys rotate   # interactive: pick recipient, confirm, then follow printed steps
-        2. Update the appropriate Secret Store / CI secret with the new private key (as instructed)
-        3. Rotate actual secret values (API keys, tokens) — manual step
-        4. Commit updated keys.pub and .age files
+        Treat age keys and provider/API secrets separately. `keys rotate` only re-wraps each
+        committed .age file under .a8c-secrets/ (read from disk); it does not read
+        ~/.a8c-secrets plaintext. Run encrypt after rotation when local plaintext should
+        match git.
+
+        Recommended order:
+        1. Revoke or disable old credentials at each provider when your runbook allows.
+        2. a8c-secrets keys rotate   # interactive; prints new private key; re-encrypts .age on disk
+        3. Update Secret Store / CI with the new private key (as printed); notify team to keys import if dev key changed
+        4. Rotate provider secret values, update decrypted files, then a8c-secrets encrypt (often --force); commit
         5. Team runs: a8c-secrets keys import && a8c-secrets decrypt
+
+        Rotate age keys before committing new provider secrets so new material is not encrypted
+        to ex-recipients. Diffs after rotate are crypto re-wraps until you encrypt again.
 
 ENVIRONMENT VARIABLES
     A8C_SECRETS_IDENTITY

@@ -876,7 +876,7 @@ fn decrypt_non_interactive_removes_orphan_decrypted_files() {
 }
 
 #[test]
-fn decrypt_non_interactive_accepts_identity_file_path() {
+fn decrypt_non_interactive_rejects_identity_file_path() {
     let temp = tempfile::tempdir().unwrap();
     let repo_dir = temp.path().join("repo");
     let home_dir = temp.path().join("home");
@@ -903,20 +903,25 @@ fn decrypt_non_interactive_accepts_identity_file_path() {
     let id_file = temp.path().join("identity.key");
     fs::write(&id_file, format!("{dev_private}\n")).unwrap();
 
-    configured_command(&repo_dir, &home_dir)
+    let assert = configured_command(&repo_dir, &home_dir)
         .args(["decrypt", "--non-interactive"])
         .env("A8C_SECRETS_IDENTITY", id_file.to_str().unwrap())
         .assert()
-        .success();
+        .failure();
 
-    assert_eq!(
-        fs::read(
-            secrets_home(&home_dir)
-                .join(repo_identifier(repo_name))
-                .join("x")
-        )
-        .unwrap(),
-        plaintext
+    let combined = String::from_utf8_lossy(&assert.get_output().stderr).to_string()
+        + &String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        combined.contains("Invalid private key in A8C_SECRETS_IDENTITY"),
+        "expected direct-key parse failure for A8C_SECRETS_IDENTITY, got: {combined}"
+    );
+
+    assert!(
+        !secrets_home(&home_dir)
+            .join(repo_identifier(repo_name))
+            .join("x")
+            .exists(),
+        "decrypted file should not be written when A8C_SECRETS_IDENTITY is not a key string"
     );
 }
 

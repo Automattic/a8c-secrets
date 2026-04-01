@@ -18,9 +18,8 @@ TERMINOLOGY:
   \"Public key\" corresponds to what age calls a \"recipient\" (age1...).
 
 ENVIRONMENT:
-  A8C_SECRETS_IDENTITY    Private key override. If value starts with AGE-SECRET-KEY-,
-                          used directly in memory. If a file path, read from disk.
-                          Intended for CI (Buildkite)."
+  A8C_SECRETS_IDENTITY    Private key override (AGE-SECRET-KEY-... text only),
+                          used directly in memory. Intended for CI (Buildkite)."
 )]
 pub struct Cli {
     #[command(subcommand)]

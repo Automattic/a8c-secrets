@@ -722,7 +722,7 @@ fn setup_completions_zsh_outputs_script() {
 }
 
 #[test]
-fn setup_nuke_removes_repo_secrets_home_key_and_decrypted_dir() {
+fn setup_nuke_fails_without_tty_and_preserves_repo_secrets_key_and_decrypted() {
     let temp = tempfile::tempdir().unwrap();
     let repo_dir = temp.path().join("repo");
     let home_dir = temp.path().join("home");
@@ -1089,7 +1089,7 @@ fn status_shows_sync_modified_encrypted_only_and_local_only() {
 }
 
 #[test]
-fn rm_removes_local_and_age_when_confirmed() {
+fn rm_non_interactive_removes_local_and_age() {
     let temp = tempfile::tempdir().unwrap();
     let repo_dir = temp.path().join("repo");
     let home_dir = temp.path().join("home");

@@ -42,12 +42,11 @@ fn command_for_editor(editor: &str, file: &Path) -> Result<std::process::Command
 /// operations fail.
 pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
     let repo_root = config::find_repo_root()?;
-    let repo_config = config::load_repo_config(&repo_root)?;
-    let slug = &repo_config.repo;
+    let repo_identifier = config::RepoIdentifier::auto_detect()?;
     config::validate_secret_basename(&args.file)?;
     let public_keys = keys::load_public_keys(&repo_root)?;
 
-    let local_dir = config::decrypted_dir(slug)?;
+    let local_dir = config::decrypted_dir(&repo_identifier)?;
     std::fs::create_dir_all(&local_dir)?;
     permissions::set_secure_dir_permissions(&local_dir)?;
     let local_path = local_dir.join(&args.file);

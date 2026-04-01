@@ -13,12 +13,11 @@ use crate::keys;
 /// of the cleanup file operations fail.
 pub fn run() -> Result<()> {
     let repo_root = config::find_repo_root()?;
-    let repo_config = config::load_repo_config(&repo_root)?;
-    let slug = &repo_config.repo;
+    let repo_identifier = config::RepoIdentifier::auto_detect()?;
 
     let secrets_dir = repo_root.join(REPO_SECRETS_DIR);
-    let key_path = keys::private_key_path(slug)?;
-    let decrypted = config::decrypted_dir(slug)?;
+    let key_path = keys::private_key_path(&repo_identifier)?;
+    let decrypted = config::decrypted_dir(&repo_identifier)?;
 
     println!("This will permanently delete:");
     println!(
@@ -32,11 +31,11 @@ pub fn run() -> Result<()> {
         println!("  {}  (decrypted files)", decrypted.display());
     }
     println!();
-    print!("Type the repo slug to confirm ({slug}): ");
+    print!("Type the repo identifier to confirm ({repo_identifier}): ");
     io::stdout().flush()?;
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
-    if input.trim() != slug {
+    if input.trim() != repo_identifier.as_str() {
         println!("Aborted.");
         return Ok(());
     }
@@ -60,12 +59,18 @@ pub fn run() -> Result<()> {
     }
 
     println!();
-    println!("Nuked a8c-secrets for '{slug}'.");
+    println!("Nuked a8c-secrets for '{repo_identifier}'.");
     println!();
     println!("Reminders:");
     println!("  - Remove Secret Store entries for this repo if no longer needed:");
-    println!("      {}", keys::secret_store_entry_name(slug, false));
-    println!("      {}", keys::secret_store_entry_name(slug, true));
+    println!(
+        "      {}",
+        keys::secret_store_entry_name(&repo_identifier, false)
+    );
+    println!(
+        "      {}",
+        keys::secret_store_entry_name(&repo_identifier, true)
+    );
     println!("  - Remove the Buildkite A8C_SECRETS_IDENTITY secret if applicable");
     println!("  - Commit the deletion of {REPO_SECRETS_DIR}/");
 

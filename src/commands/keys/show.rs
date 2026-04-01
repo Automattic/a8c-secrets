@@ -13,14 +13,13 @@ use crate::keys;
 /// read.
 pub fn run() -> Result<()> {
     let repo_root = config::find_repo_root()?;
-    let repo_config = config::load_repo_config(&repo_root)?;
-    let slug = &repo_config.repo;
+    let repo_identifier = config::RepoIdentifier::auto_detect()?;
 
     // Private key info
-    let key_path = keys::private_key_path(slug)?;
+    let key_path = keys::private_key_path(&repo_identifier)?;
     println!("Private key: {}", key_path.display());
 
-    let private_key = if let Ok(key) = keys::get_private_key(slug) {
+    let private_key = if let Ok(key) = keys::get_private_key(&repo_identifier) {
         println!("Status:      configured");
         Some(key)
     } else {

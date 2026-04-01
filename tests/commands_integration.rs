@@ -8,14 +8,27 @@ use std::process::Stdio;
 use age::secrecy::ExposeSecret;
 use assert_cmd::Command;
 
-fn write_repo_config(repo_dir: &Path, slug: &str) {
+fn git_init(repo_dir: &Path) {
+    let status = std::process::Command::new("git")
+        .args(["init", "-q"])
+        .current_dir(repo_dir)
+        .status()
+        .expect("spawn git init");
+    assert!(status.success(), "git init failed (is git installed?)");
+
     let secrets_dir = repo_dir.join(".a8c-secrets");
     fs::create_dir_all(&secrets_dir).unwrap();
-    fs::write(
-        secrets_dir.join("config.toml"),
-        format!("repo = \"{slug}\"\n"),
-    )
-    .unwrap();
+}
+
+fn git_init_with_origin(repo_dir: &Path, repo_name: &str) {
+    git_init(repo_dir);
+    let remote = format!("https://github.com/org/{repo_name}.git");
+    let status = std::process::Command::new("git")
+        .args(["remote", "add", "origin", &remote])
+        .current_dir(repo_dir)
+        .status()
+        .expect("spawn git remote");
+    assert!(status.success(), "git remote add failed");
 }
 
 fn write_keys_pub(repo_dir: &Path, dev_public: &str, ci_public: &str) {
@@ -49,10 +62,20 @@ fn configured_command(repo_dir: &Path, home_dir: &Path) -> Command {
     cmd
 }
 
-fn local_key_path(home_dir: &Path, slug: &str) -> PathBuf {
-    secrets_home(home_dir)
+fn repo_identifier(repo_name: &str) -> String {
+    format!("github.com/org/{repo_name}")
+}
+
+fn local_key_path(home_dir: &Path, repo_name: &str) -> PathBuf {
+    let mut path = secrets_home(home_dir)
         .join("keys")
-        .join(format!("{slug}.key"))
+        .join(repo_identifier(repo_name));
+    if let Some(file_name) = path.file_name() {
+        let mut new_name = file_name.to_os_string();
+        new_name.push(".key");
+        path.set_file_name(new_name);
+    }
+    path
 }
 
 fn cargo_bin_exe() -> PathBuf {
@@ -69,20 +92,29 @@ fn assert_output_contains_secret_name_rejection(output: &std::process::Output) {
     );
 }
 
-/// `git` on PATH with `origin` → slug `demo` for integration tests.
-fn git_init_with_demo_origin(repo_dir: &Path) {
+/// Commit current repo contents with explicit author info for isolated tests.
+fn git_commit_all(repo_dir: &Path, message: &str) {
     let status = std::process::Command::new("git")
-        .args(["init", "-q"])
+        .args(["add", "."])
         .current_dir(repo_dir)
         .status()
-        .expect("spawn git init");
-    assert!(status.success(), "git init failed (is git installed?)");
+        .expect("spawn git add");
+    assert!(status.success(), "git add failed");
+
     let status = std::process::Command::new("git")
-        .args(["remote", "add", "origin", "https://github.com/org/demo.git"])
+        .args([
+            "-c",
+            "user.name=Test User",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "-m",
+            message,
+        ])
         .current_dir(repo_dir)
         .status()
-        .expect("spawn git remote");
-    assert!(status.success(), "git remote add failed");
+        .expect("spawn git commit");
+    assert!(status.success(), "git commit failed");
 }
 
 #[test]
@@ -93,8 +125,8 @@ fn decrypt_non_interactive_fails_when_no_key_configured() {
     fs::create_dir_all(&repo_dir).unwrap();
     fs::create_dir_all(&home_dir).unwrap();
 
-    let slug = "demo-repo";
-    write_repo_config(&repo_dir, slug);
+    let repo_name = "demo-repo";
+    git_init_with_origin(&repo_dir, repo_name);
 
     let dev_identity = age::x25519::Identity::generate();
     let ci_identity = age::x25519::Identity::generate();
@@ -118,6 +150,65 @@ fn decrypt_non_interactive_fails_when_no_key_configured() {
 }
 
 #[test]
+fn decrypt_non_interactive_succeeds_without_key_when_no_age_files_exist() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_dir = temp.path().join("repo");
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&repo_dir).unwrap();
+    fs::create_dir_all(&home_dir).unwrap();
+
+    let repo_name = "demo-repo";
+    git_init_with_origin(&repo_dir, repo_name);
+
+    let assert = configured_command(&repo_dir, &home_dir)
+        .arg("decrypt")
+        .arg("--non-interactive")
+        .env_remove("A8C_SECRETS_IDENTITY")
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        stdout.contains("No .age files found"),
+        "expected no-age-files notice in stdout: {stdout}"
+    );
+
+    let out_dir = secrets_home(&home_dir).join(repo_identifier(repo_name));
+    assert!(
+        !out_dir.exists(),
+        "decrypted directory should not be created when there are no .age files"
+    );
+}
+
+#[test]
+fn decrypt_non_interactive_succeeds_without_origin_when_no_age_files_exist() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_dir = temp.path().join("repo");
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&repo_dir).unwrap();
+    fs::create_dir_all(&home_dir).unwrap();
+
+    git_init(&repo_dir);
+
+    let assert = configured_command(&repo_dir, &home_dir)
+        .arg("decrypt")
+        .arg("--non-interactive")
+        .env_remove("A8C_SECRETS_IDENTITY")
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        stdout.contains("No .age files found"),
+        "expected no-age-files notice in stdout: {stdout}"
+    );
+
+    let secrets_home = secrets_home(&home_dir);
+    assert!(
+        !secrets_home.exists(),
+        "local secrets home should not be created when there are no .age files"
+    );
+}
+
+#[test]
 fn decrypt_non_interactive_writes_plaintext_to_local_home_dir() {
     let temp = tempfile::tempdir().unwrap();
     let repo_dir = temp.path().join("repo");
@@ -125,8 +216,8 @@ fn decrypt_non_interactive_writes_plaintext_to_local_home_dir() {
     fs::create_dir_all(&repo_dir).unwrap();
     fs::create_dir_all(&home_dir).unwrap();
 
-    let slug = "demo-repo";
-    write_repo_config(&repo_dir, slug);
+    let repo_name = "demo-repo";
+    git_init_with_origin(&repo_dir, repo_name);
 
     let dev_identity = age::x25519::Identity::generate();
     let ci_identity = age::x25519::Identity::generate();
@@ -149,7 +240,9 @@ fn decrypt_non_interactive_writes_plaintext_to_local_home_dir() {
         .assert()
         .success();
 
-    let out = secrets_home(&home_dir).join(slug).join("secret.json");
+    let out = secrets_home(&home_dir)
+        .join(repo_identifier(repo_name))
+        .join("secret.json");
     assert_eq!(fs::read(out).unwrap(), plaintext);
 }
 
@@ -161,8 +254,8 @@ fn decrypt_non_interactive_fails_when_one_age_file_cannot_be_decrypted() {
     fs::create_dir_all(&repo_dir).unwrap();
     fs::create_dir_all(&home_dir).unwrap();
 
-    let slug = "demo-repo";
-    write_repo_config(&repo_dir, slug);
+    let repo_name = "demo-repo";
+    git_init_with_origin(&repo_dir, repo_name);
 
     let dev_identity = age::x25519::Identity::generate();
     let ci_identity = age::x25519::Identity::generate();
@@ -202,7 +295,12 @@ fn decrypt_non_interactive_fails_when_one_age_file_cannot_be_decrypted() {
     );
 
     assert_eq!(
-        fs::read(secrets_home(&home_dir).join(slug).join("secret.json")).unwrap(),
+        fs::read(
+            secrets_home(&home_dir)
+                .join(repo_identifier(repo_name))
+                .join("secret.json"),
+        )
+        .unwrap(),
         plaintext
     );
 }
@@ -215,8 +313,8 @@ fn encrypt_skips_rewrite_when_plaintext_is_unchanged() {
     fs::create_dir_all(&repo_dir).unwrap();
     fs::create_dir_all(&home_dir).unwrap();
 
-    let slug = "demo-repo";
-    write_repo_config(&repo_dir, slug);
+    let repo_name = "demo-repo";
+    git_init_with_origin(&repo_dir, repo_name);
 
     let dev_identity = age::x25519::Identity::generate();
     let ci_identity = age::x25519::Identity::generate();
@@ -233,7 +331,7 @@ fn encrypt_skips_rewrite_when_plaintext_is_unchanged() {
     let age_path = repo_dir.join(".a8c-secrets/config.json.age");
     fs::write(&age_path, &ciphertext).unwrap();
 
-    let local_dir = secrets_home(&home_dir).join(slug);
+    let local_dir = secrets_home(&home_dir).join(repo_identifier(repo_name));
     fs::create_dir_all(&local_dir).unwrap();
     fs::write(local_dir.join("config.json"), plaintext).unwrap();
 
@@ -261,8 +359,8 @@ fn encrypt_rejects_traversal_in_explicit_filename() {
     fs::create_dir_all(&repo_dir).unwrap();
     fs::create_dir_all(&home_dir).unwrap();
 
-    let slug = "demo-repo";
-    write_repo_config(&repo_dir, slug);
+    let repo_name = "demo-repo";
+    git_init_with_origin(&repo_dir, repo_name);
 
     let dev_identity = age::x25519::Identity::generate();
     let ci_identity = age::x25519::Identity::generate();
@@ -271,7 +369,7 @@ fn encrypt_rejects_traversal_in_explicit_filename() {
     let ci_public = ci_identity.to_public().to_string();
     write_keys_pub(&repo_dir, &dev_public, &ci_public);
 
-    let local_dir = secrets_home(&home_dir).join(slug);
+    let local_dir = secrets_home(&home_dir).join(repo_identifier(repo_name));
     fs::create_dir_all(&local_dir).unwrap();
     fs::write(local_dir.join("x.txt"), b"x").unwrap();
 
@@ -291,7 +389,7 @@ fn rm_rejects_traversal_in_filename() {
     fs::create_dir_all(&repo_dir).unwrap();
     fs::create_dir_all(&home_dir).unwrap();
 
-    write_repo_config(&repo_dir, "demo-repo");
+    git_init_with_origin(&repo_dir, "demo-repo");
     let dev_identity = age::x25519::Identity::generate();
     let ci_identity = age::x25519::Identity::generate();
     write_keys_pub(
@@ -316,7 +414,7 @@ fn edit_rejects_traversal_in_filename() {
     fs::create_dir_all(&repo_dir).unwrap();
     fs::create_dir_all(&home_dir).unwrap();
 
-    write_repo_config(&repo_dir, "demo-repo");
+    git_init_with_origin(&repo_dir, "demo-repo");
     let dev_identity = age::x25519::Identity::generate();
     let ci_identity = age::x25519::Identity::generate();
     write_keys_pub(
@@ -341,8 +439,8 @@ fn status_succeeds_for_configured_repo() {
     fs::create_dir_all(&repo_dir).unwrap();
     fs::create_dir_all(&home_dir).unwrap();
 
-    let slug = "demo-repo";
-    write_repo_config(&repo_dir, slug);
+    let repo_name = "demo-repo";
+    git_init_with_origin(&repo_dir, repo_name);
 
     let dev_identity = age::x25519::Identity::generate();
     let ci_identity = age::x25519::Identity::generate();
@@ -366,7 +464,7 @@ fn status_succeeds_for_configured_repo() {
 
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     assert!(
-        stdout.contains("Repo: demo-repo"),
+        stdout.contains("Repo: github.com/org/demo-repo"),
         "unexpected stdout: {stdout}"
     );
     assert!(
@@ -388,12 +486,12 @@ fn status_succeeds_when_keys_pub_missing_but_shows_error_lines() {
     fs::create_dir_all(&repo_dir).unwrap();
     fs::create_dir_all(&home_dir).unwrap();
 
-    let slug = "demo-repo";
-    write_repo_config(&repo_dir, slug);
+    let repo_name = "demo-repo";
+    git_init_with_origin(&repo_dir, repo_name);
 
     let dev_identity = age::x25519::Identity::generate();
     let dev_private = dev_identity.to_string().expose_secret().to_string();
-    let key_path = local_key_path(&home_dir, slug);
+    let key_path = local_key_path(&home_dir, repo_name);
     fs::create_dir_all(key_path.parent().unwrap()).unwrap();
     fs::write(&key_path, format!("{dev_private}\n")).unwrap();
 
@@ -421,8 +519,8 @@ fn encrypt_new_plaintext_then_decrypt_roundtrip() {
     fs::create_dir_all(&repo_dir).unwrap();
     fs::create_dir_all(&home_dir).unwrap();
 
-    let slug = "demo-repo";
-    write_repo_config(&repo_dir, slug);
+    let repo_name = "demo-repo";
+    git_init_with_origin(&repo_dir, repo_name);
 
     let dev_identity = age::x25519::Identity::generate();
     let ci_identity = age::x25519::Identity::generate();
@@ -431,12 +529,12 @@ fn encrypt_new_plaintext_then_decrypt_roundtrip() {
     let ci_public = ci_identity.to_public().to_string();
     write_keys_pub(&repo_dir, &dev_public, &ci_public);
 
-    let key_path = local_key_path(&home_dir, slug);
+    let key_path = local_key_path(&home_dir, repo_name);
     fs::create_dir_all(key_path.parent().unwrap()).unwrap();
     fs::write(&key_path, format!("{dev_private}\n")).unwrap();
 
     let plaintext = b"roundtrip-plaintext";
-    let local_dir = secrets_home(&home_dir).join(slug);
+    let local_dir = secrets_home(&home_dir).join(repo_identifier(repo_name));
     fs::create_dir_all(&local_dir).unwrap();
     fs::write(local_dir.join("note.txt"), plaintext).unwrap();
 
@@ -465,7 +563,7 @@ fn setup_init_requires_interactive_tty() {
     fs::create_dir_all(&repo_dir).unwrap();
     fs::create_dir_all(&home_dir).unwrap();
 
-    git_init_with_demo_origin(&repo_dir);
+    git_init_with_origin(&repo_dir, "demo");
 
     let mut child = std::process::Command::new(cargo_bin_exe())
         .current_dir(&repo_dir)
@@ -495,8 +593,53 @@ fn setup_init_requires_interactive_tty() {
         "expected TTY requirement message, got: {combined}"
     );
     assert!(
-        !repo_dir.join(".a8c-secrets/config.toml").exists(),
-        "setup init should fail before writing config in non-TTY mode"
+        !repo_dir.join(".a8c-secrets/keys.pub").exists(),
+        "setup init should fail before creating .a8c-secrets/keys.pub in non-TTY mode"
+    );
+}
+
+#[test]
+fn status_works_inside_git_worktree_checkout() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_dir = temp.path().join("repo");
+    let worktree_dir = temp.path().join("worktree");
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&repo_dir).unwrap();
+    fs::create_dir_all(&home_dir).unwrap();
+
+    git_init_with_origin(&repo_dir, "demo");
+
+    fs::create_dir_all(repo_dir.join(".a8c-secrets")).unwrap();
+    let dev_identity = age::x25519::Identity::generate();
+    let ci_identity = age::x25519::Identity::generate();
+    write_keys_pub(
+        &repo_dir,
+        &dev_identity.to_public().to_string(),
+        &ci_identity.to_public().to_string(),
+    );
+
+    git_commit_all(&repo_dir, "init a8c-secrets fixtures");
+
+    let status = std::process::Command::new("git")
+        .args([
+            "worktree",
+            "add",
+            worktree_dir.to_str().expect("worktree path utf8"),
+        ])
+        .current_dir(&repo_dir)
+        .status()
+        .expect("spawn git worktree add");
+    assert!(status.success(), "git worktree add failed");
+
+    let assert = configured_command(&worktree_dir, &home_dir)
+        .arg("status")
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
+    assert!(
+        stdout.contains("Repo: github.com/org/demo"),
+        "expected status output from worktree checkout, got: {stdout}"
     );
 }
 
@@ -586,15 +729,15 @@ fn setup_nuke_removes_repo_secrets_home_key_and_decrypted_dir() {
     fs::create_dir_all(&repo_dir).unwrap();
     fs::create_dir_all(&home_dir).unwrap();
 
-    let slug = "demo-repo";
-    write_repo_config(&repo_dir, slug);
+    let repo_name = "demo-repo";
+    git_init_with_origin(&repo_dir, repo_name);
     fs::write(repo_dir.join(".a8c-secrets/placeholder.age"), b"x").unwrap();
 
-    let key_path = local_key_path(&home_dir, slug);
+    let key_path = local_key_path(&home_dir, repo_name);
     fs::create_dir_all(key_path.parent().unwrap()).unwrap();
     fs::write(&key_path, b"AGE-SECRET-KEY-1PLACEHOLDER\n").unwrap();
 
-    let decrypted = secrets_home(&home_dir).join(slug);
+    let decrypted = secrets_home(&home_dir).join(repo_identifier(repo_name));
     fs::create_dir_all(&decrypted).unwrap();
     fs::write(decrypted.join("local.txt"), b"plain").unwrap();
 
@@ -609,7 +752,7 @@ fn setup_nuke_removes_repo_secrets_home_key_and_decrypted_dir() {
         .expect("spawn setup nuke");
 
     if let Some(mut stdin) = child.stdin.take() {
-        writeln!(stdin, "{slug}").unwrap();
+        writeln!(stdin, "{}", repo_identifier(repo_name)).unwrap();
     }
 
     let status = child.wait().expect("wait on setup nuke");
@@ -631,8 +774,8 @@ fn keys_import_writes_private_key_from_stdin() {
     fs::create_dir_all(&repo_dir).unwrap();
     fs::create_dir_all(&home_dir).unwrap();
 
-    let slug = "demo-repo";
-    write_repo_config(&repo_dir, slug);
+    let repo_name = "demo-repo";
+    git_init_with_origin(&repo_dir, repo_name);
 
     let dev_identity = age::x25519::Identity::generate();
     let ci_identity = age::x25519::Identity::generate();
@@ -645,7 +788,7 @@ fn keys_import_writes_private_key_from_stdin() {
     let private_key = dev_identity.to_string().expose_secret().to_string();
     assert!(private_key.starts_with("AGE-SECRET-KEY-"));
 
-    let key_path = local_key_path(&home_dir, slug);
+    let key_path = local_key_path(&home_dir, repo_name);
     assert!(!key_path.exists());
 
     let mut child = std::process::Command::new(cargo_bin_exe())
@@ -677,8 +820,8 @@ fn decrypt_non_interactive_removes_orphan_local_files() {
     fs::create_dir_all(&repo_dir).unwrap();
     fs::create_dir_all(&home_dir).unwrap();
 
-    let slug = "demo-repo";
-    write_repo_config(&repo_dir, slug);
+    let repo_name = "demo-repo";
+    git_init_with_origin(&repo_dir, repo_name);
 
     let dev_identity = age::x25519::Identity::generate();
     let ci_identity = age::x25519::Identity::generate();
@@ -694,7 +837,7 @@ fn decrypt_non_interactive_removes_orphan_local_files() {
     );
     fs::write(repo_dir.join(".a8c-secrets/secret.json.age"), ciphertext).unwrap();
 
-    let local_dir = secrets_home(&home_dir).join(slug);
+    let local_dir = secrets_home(&home_dir).join(repo_identifier(repo_name));
 
     configured_command(&repo_dir, &home_dir)
         .args(["decrypt", "--non-interactive"])
@@ -731,8 +874,8 @@ fn decrypt_non_interactive_accepts_identity_file_path() {
     fs::create_dir_all(&repo_dir).unwrap();
     fs::create_dir_all(&home_dir).unwrap();
 
-    let slug = "demo-repo";
-    write_repo_config(&repo_dir, slug);
+    let repo_name = "demo-repo";
+    git_init_with_origin(&repo_dir, repo_name);
 
     let dev_identity = age::x25519::Identity::generate();
     let ci_identity = age::x25519::Identity::generate();
@@ -758,7 +901,12 @@ fn decrypt_non_interactive_accepts_identity_file_path() {
         .success();
 
     assert_eq!(
-        fs::read(secrets_home(&home_dir).join(slug).join("x")).unwrap(),
+        fs::read(
+            secrets_home(&home_dir)
+                .join(repo_identifier(repo_name))
+                .join("x")
+        )
+        .unwrap(),
         plaintext
     );
 }
@@ -771,8 +919,8 @@ fn encrypt_force_reencrypts_without_private_key() {
     fs::create_dir_all(&repo_dir).unwrap();
     fs::create_dir_all(&home_dir).unwrap();
 
-    let slug = "demo-repo";
-    write_repo_config(&repo_dir, slug);
+    let repo_name = "demo-repo";
+    git_init_with_origin(&repo_dir, repo_name);
 
     let dev_identity = age::x25519::Identity::generate();
     let ci_identity = age::x25519::Identity::generate();
@@ -788,7 +936,7 @@ fn encrypt_force_reencrypts_without_private_key() {
     let age_path = repo_dir.join(".a8c-secrets/note.age");
     fs::write(&age_path, &ciphertext).unwrap();
 
-    let local_dir = secrets_home(&home_dir).join(slug);
+    let local_dir = secrets_home(&home_dir).join(repo_identifier(repo_name));
     fs::create_dir_all(&local_dir).unwrap();
     fs::write(local_dir.join("note"), b"new-plaintext").unwrap();
 
@@ -819,8 +967,8 @@ fn encrypt_warns_when_existing_age_cannot_be_decrypted_for_comparison() {
     fs::create_dir_all(&repo_dir).unwrap();
     fs::create_dir_all(&home_dir).unwrap();
 
-    let slug = "demo-repo";
-    write_repo_config(&repo_dir, slug);
+    let repo_name = "demo-repo";
+    git_init_with_origin(&repo_dir, repo_name);
 
     let dev_identity = age::x25519::Identity::generate();
     let ci_identity = age::x25519::Identity::generate();
@@ -838,7 +986,7 @@ fn encrypt_warns_when_existing_age_cannot_be_decrypted_for_comparison() {
     )
     .unwrap();
 
-    let local_dir = secrets_home(&home_dir).join(slug);
+    let local_dir = secrets_home(&home_dir).join(repo_identifier(repo_name));
     fs::create_dir_all(&local_dir).unwrap();
     fs::write(local_dir.join("wrong_recipient"), plaintext).unwrap();
 
@@ -873,8 +1021,8 @@ fn status_shows_sync_modified_encrypted_only_and_local_only() {
     fs::create_dir_all(&repo_dir).unwrap();
     fs::create_dir_all(&home_dir).unwrap();
 
-    let slug = "demo-repo";
-    write_repo_config(&repo_dir, slug);
+    let repo_name = "demo-repo";
+    git_init_with_origin(&repo_dir, repo_name);
 
     let dev_identity = age::x25519::Identity::generate();
     let ci_identity = age::x25519::Identity::generate();
@@ -883,7 +1031,7 @@ fn status_shows_sync_modified_encrypted_only_and_local_only() {
     let ci_public = ci_identity.to_public().to_string();
     write_keys_pub(&repo_dir, &dev_public, &ci_public);
 
-    let local_dir = secrets_home(&home_dir).join(slug);
+    let local_dir = secrets_home(&home_dir).join(repo_identifier(repo_name));
     fs::create_dir_all(&local_dir).unwrap();
 
     let in_sync_plain = b"same";
@@ -942,8 +1090,8 @@ fn rm_removes_local_and_age_when_confirmed() {
     fs::create_dir_all(&repo_dir).unwrap();
     fs::create_dir_all(&home_dir).unwrap();
 
-    let slug = "demo-repo";
-    write_repo_config(&repo_dir, slug);
+    let repo_name = "demo-repo";
+    git_init_with_origin(&repo_dir, repo_name);
 
     let dev_identity = age::x25519::Identity::generate();
     let ci_identity = age::x25519::Identity::generate();
@@ -958,7 +1106,9 @@ fn rm_removes_local_and_age_when_confirmed() {
     )
     .unwrap();
 
-    let local_path = secrets_home(&home_dir).join(slug).join("gone.txt");
+    let local_path = secrets_home(&home_dir)
+        .join(repo_identifier(repo_name))
+        .join("gone.txt");
     fs::create_dir_all(local_path.parent().unwrap()).unwrap();
     fs::write(&local_path, b"x").unwrap();
 
@@ -991,8 +1141,8 @@ fn edit_end_to_end_invokes_editor_and_writes_age() {
     fs::create_dir_all(&repo_dir).unwrap();
     fs::create_dir_all(&home_dir).unwrap();
 
-    let slug = "demo-repo";
-    write_repo_config(&repo_dir, slug);
+    let repo_name = "demo-repo";
+    git_init_with_origin(&repo_dir, repo_name);
 
     let dev_identity = age::x25519::Identity::generate();
     let ci_identity = age::x25519::Identity::generate();
@@ -1000,7 +1150,7 @@ fn edit_end_to_end_invokes_editor_and_writes_age() {
     let ci_public = ci_identity.to_public().to_string();
     write_keys_pub(&repo_dir, &dev_public, &ci_public);
 
-    let local_dir = secrets_home(&home_dir).join(slug);
+    let local_dir = secrets_home(&home_dir).join(repo_identifier(repo_name));
     fs::create_dir_all(&local_dir).unwrap();
     fs::write(local_dir.join("note.txt"), b"before-edit\n").unwrap();
 

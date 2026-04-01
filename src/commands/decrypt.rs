@@ -26,7 +26,8 @@ fn compute_orphans(local_files: &[String], age_files: &BTreeSet<String>) -> Vec<
 /// encrypted files cannot be read, any ciphertext cannot be decrypted, output files
 /// cannot be written, or orphan cleanup fails.
 pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
-    let interactive = !args.non_interactive && io::stdin().is_terminal();
+    let interactive =
+        !args.non_interactive && io::stdin().is_terminal() && io::stdout().is_terminal();
 
     let repo_root = config::find_repo_root()?;
     let age_files: BTreeSet<String> = config::list_age_files(&repo_root)?.into_iter().collect();

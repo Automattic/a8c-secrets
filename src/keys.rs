@@ -180,7 +180,7 @@ pub fn prompt_and_import_private_key(repo_identifier: &RepoIdentifier) -> Result
     );
     println!();
 
-    let raw = if io::stdin().is_terminal() {
+    let raw = if io::stdin().is_terminal() && io::stdout().is_terminal() {
         Zeroizing::new(
             Password::new("Paste private key:")
                 .prompt()

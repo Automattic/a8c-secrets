@@ -312,9 +312,7 @@ mod tests {
             let ci_public = ci_identity.to_public().to_string();
             write_keys_pub(repo_dir.path(), &old_dev_public, &ci_public);
 
-            let key_path = secrets_home
-                .join("keys")
-                .join("github.com/org/demo-repo.key");
+            let key_path = keys::private_key_path(&repo_identifier);
             fs::create_dir_all(key_path.parent().unwrap()).unwrap();
             fs::write(
                 &key_path,

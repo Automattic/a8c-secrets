@@ -104,7 +104,11 @@ Remove a secret file completely.
 
 Deletes both the decrypted file at ~/.a8c-secrets/<host>/<org>/<name>/<file> and the
 encrypted file at .a8c-secrets/<file>.age. Prompts for confirmation unless
---non-interactive is provided.",
+--non-interactive is provided.
+
+When run without --non-interactive, this command requires an interactive terminal
+(TTY). In non-TTY contexts (for example CI), it fails unless --non-interactive
+is explicitly passed.",
         after_long_help = "\
 EXAMPLES:
   a8c-secrets rm old-api-key.json

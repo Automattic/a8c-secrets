@@ -42,8 +42,7 @@ pub fn run() -> Result<()> {
     .prompt()
     .map_err(|e| anyhow::anyhow!(e))?;
     if input.trim() != repo_identifier.as_str() {
-        println!("Aborted.");
-        return Ok(());
+        anyhow::bail!("Aborted.");
     }
 
     // Delete in-repo .a8c-secrets/

@@ -7,6 +7,7 @@ mod config;
 mod crypto;
 mod keys;
 mod manual;
+mod models;
 mod permissions;
 
 use anyhow::Result;

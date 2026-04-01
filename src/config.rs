@@ -142,7 +142,10 @@ pub fn find_repo_root() -> Result<PathBuf> {
     if !output.status.success() {
         anyhow::bail!("Current directory is not inside a git repository/worktree");
     }
-    let root = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let root = String::from_utf8(output.stdout)
+        .context("Git reported repository root using non-UTF-8 bytes")?
+        .trim()
+        .to_string();
     if root.is_empty() {
         anyhow::bail!("Could not determine git repository root");
     }

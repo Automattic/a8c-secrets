@@ -20,8 +20,10 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
         );
     }
 
-    let cwd = std::env::current_dir().context("Failed to get current directory")?;
-    let secrets_dir = cwd.join(REPO_SECRETS_DIR);
+    let repo_root = config::find_repo_root().context(
+        "Failed to determine git repository root. Run this command from inside a git checkout.",
+    )?;
+    let secrets_dir = repo_root.join(REPO_SECRETS_DIR);
 
     if secrets_dir.exists() {
         anyhow::bail!(
@@ -42,7 +44,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
         .with_context(|| format!("Failed to create {}", secrets_dir.display()))?;
 
     // Write keys.pub
-    let keys_pub_path = keys::public_keys_path(&cwd);
+    let keys_pub_path = keys::public_keys_path(&repo_root);
     std::fs::write(
         &keys_pub_path,
         format!("# dev\n{dev_public}\n# ci\n{ci_public}\n"),

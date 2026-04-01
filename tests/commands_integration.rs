@@ -741,7 +741,7 @@ fn setup_nuke_removes_repo_secrets_home_key_and_decrypted_dir() {
     fs::create_dir_all(&decrypted).unwrap();
     fs::write(decrypted.join("local.txt"), b"plain").unwrap();
 
-    let mut child = std::process::Command::new(cargo_bin_exe())
+    let child = std::process::Command::new(cargo_bin_exe())
         .current_dir(&repo_dir)
         .env("A8C_SECRETS_HOME", secrets_home(&home_dir))
         .args(["setup", "nuke"])
@@ -751,9 +751,6 @@ fn setup_nuke_removes_repo_secrets_home_key_and_decrypted_dir() {
         .spawn()
         .expect("spawn setup nuke");
 
-    if let Some(mut stdin) = child.stdin.take() {
-        writeln!(stdin).unwrap();
-    }
     let out = child
         .wait_with_output()
         .expect("wait_with_output on setup nuke");
@@ -1125,13 +1122,9 @@ fn rm_removes_local_and_age_when_confirmed() {
     cmd.current_dir(&repo_dir)
         .env("A8C_SECRETS_HOME", secrets_home(&home_dir))
         .args(["rm", "--non-interactive", "gone.txt"])
-        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let mut child = cmd.spawn().expect("spawn rm");
-    if let Some(mut stdin) = child.stdin.take() {
-        writeln!(stdin).unwrap();
-    }
     let status = child.wait().expect("wait rm");
     assert!(
         status.success(),

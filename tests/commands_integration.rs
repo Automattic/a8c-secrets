@@ -752,18 +752,27 @@ fn setup_nuke_removes_repo_secrets_home_key_and_decrypted_dir() {
         .expect("spawn setup nuke");
 
     if let Some(mut stdin) = child.stdin.take() {
-        writeln!(stdin, "{}", repo_identifier(repo_name)).unwrap();
+        writeln!(stdin).unwrap();
     }
-
-    let status = child.wait().expect("wait on setup nuke");
-    assert!(status.success(), "setup nuke should succeed");
-
+    let out = child
+        .wait_with_output()
+        .expect("wait_with_output on setup nuke");
     assert!(
-        !repo_dir.join(".a8c-secrets").exists(),
-        "in-repo .a8c-secrets should be removed"
+        !out.status.success(),
+        "setup nuke should fail when stdin/stdout are not TTYs"
     );
-    assert!(!key_path.exists(), "private key file should be removed");
-    assert!(!decrypted.exists(), "decrypted directory should be removed");
+    let combined =
+        String::from_utf8_lossy(&out.stderr).to_string() + &String::from_utf8_lossy(&out.stdout);
+    assert!(
+        combined.contains("interactive terminal (TTY)"),
+        "expected TTY requirement message, got: {combined}"
+    );
+    assert!(
+        repo_dir.join(".a8c-secrets").exists(),
+        "in-repo .a8c-secrets should remain on failed non-TTY nuke"
+    );
+    assert!(key_path.exists(), "private key file should remain");
+    assert!(decrypted.exists(), "decrypted directory should remain");
 }
 
 #[test]
@@ -1115,19 +1124,65 @@ fn rm_removes_local_and_age_when_confirmed() {
     let mut cmd = std::process::Command::new(cargo_bin_exe());
     cmd.current_dir(&repo_dir)
         .env("A8C_SECRETS_HOME", secrets_home(&home_dir))
-        .args(["rm", "gone.txt"])
+        .args(["rm", "--non-interactive", "gone.txt"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let mut child = cmd.spawn().expect("spawn rm");
     if let Some(mut stdin) = child.stdin.take() {
-        writeln!(stdin, "y").unwrap();
+        writeln!(stdin).unwrap();
     }
     let status = child.wait().expect("wait rm");
-    assert!(status.success(), "rm should succeed after confirmation");
+    assert!(
+        status.success(),
+        "rm should succeed in non-interactive mode"
+    );
 
     assert!(!local_path.exists());
     assert!(!age_path.exists());
+}
+
+#[test]
+fn rm_fails_without_non_interactive_flag_when_not_tty() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_dir = temp.path().join("repo");
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&repo_dir).unwrap();
+    fs::create_dir_all(&home_dir).unwrap();
+
+    let repo_name = "demo-repo";
+    git_init_with_origin(&repo_dir, repo_name);
+
+    let dev_identity = age::x25519::Identity::generate();
+    let ci_identity = age::x25519::Identity::generate();
+    let dev_public = dev_identity.to_public().to_string();
+    let ci_public = ci_identity.to_public().to_string();
+    write_keys_pub(&repo_dir, &dev_public, &ci_public);
+
+    let age_path = repo_dir.join(".a8c-secrets/gone.txt.age");
+    fs::write(
+        &age_path,
+        encrypt_for(&[dev_identity.to_public(), ci_identity.to_public()], b"x"),
+    )
+    .unwrap();
+    let local_path = secrets_home(&home_dir)
+        .join(repo_identifier(repo_name))
+        .join("gone.txt");
+    fs::create_dir_all(local_path.parent().unwrap()).unwrap();
+    fs::write(&local_path, b"x").unwrap();
+
+    let assert = configured_command(&repo_dir, &home_dir)
+        .args(["rm", "gone.txt"])
+        .assert()
+        .failure();
+    let combined = String::from_utf8_lossy(&assert.get_output().stderr).to_string()
+        + &String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        combined.contains("not a TTY"),
+        "expected non-TTY error in output: {combined}"
+    );
+    assert!(local_path.exists(), "local file should remain on failed rm");
+    assert!(age_path.exists(), ".age file should remain on failed rm");
 }
 
 #[cfg(unix)]

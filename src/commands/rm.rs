@@ -1,6 +1,5 @@
-use std::io::{self, Write};
-
 use anyhow::Result;
+use inquire::Confirm;
 
 use crate::cli::RmArgs;
 use crate::config::{self, REPO_SECRETS_DIR};
@@ -37,13 +36,13 @@ pub fn run(args: &RmArgs) -> Result<()> {
         println!("  {}", age_path.display());
     }
 
-    print!("Proceed? [y/N] ");
-    io::stdout().flush()?;
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-    if !input.trim().eq_ignore_ascii_case("y") {
-        println!("Aborted.");
-        return Ok(());
+    if !args.non_interactive
+        && !Confirm::new("Proceed?")
+            .with_default(false)
+            .prompt()
+            .map_err(|e| anyhow::anyhow!(e))?
+    {
+        anyhow::bail!("Aborted.");
     }
 
     if local_exists {

@@ -1,7 +1,8 @@
 use std::collections::BTreeSet;
-use std::io::{self, IsTerminal, Write};
+use std::io::{self, IsTerminal};
 
 use anyhow::{Context, Result};
+use inquire::Confirm;
 
 use crate::cli::DecryptArgs;
 use crate::config::{self, REPO_SECRETS_DIR};
@@ -116,11 +117,10 @@ fn handle_orphans(
     }
 
     let should_remove = if interactive {
-        print!("Remove orphan files? [y/N] ");
-        io::stdout().flush()?;
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-        input.trim().eq_ignore_ascii_case("y")
+        Confirm::new("Remove orphan files?")
+            .with_default(false)
+            .prompt()
+            .map_err(|e| anyhow::anyhow!(e))?
     } else {
         println!("Non-interactive mode: auto-removing orphans.");
         true

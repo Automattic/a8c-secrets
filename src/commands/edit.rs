@@ -1,7 +1,7 @@
-use std::io::{self, Write};
 use std::path::Path;
 
 use anyhow::{Context, Result};
+use inquire::Confirm;
 
 use crate::cli::EditArgs;
 use crate::config::{self, REPO_SECRETS_DIR};
@@ -53,13 +53,12 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
 
     // If file doesn't exist, prompt to create
     if !local_path.exists() {
-        print!("'{}' does not exist. Create it? [y/N] ", args.file);
-        io::stdout().flush()?;
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-        if !input.trim().eq_ignore_ascii_case("y") {
-            println!("Aborted.");
-            return Ok(());
+        if !Confirm::new(&format!("'{}' does not exist. Create it?", args.file))
+            .with_default(false)
+            .prompt()
+            .map_err(|e| anyhow::anyhow!(e))?
+        {
+            anyhow::bail!("Aborted.");
         }
         std::fs::write(&local_path, "")?;
         permissions::set_secure_file_permissions(&local_path)?;

@@ -141,12 +141,55 @@ fn decrypt_non_interactive_fails_when_no_key_configured() {
     );
     fs::write(repo_dir.join(".a8c-secrets/secret.json.age"), ciphertext).unwrap();
 
-    configured_command(&repo_dir, &home_dir)
+    let assert = configured_command(&repo_dir, &home_dir)
         .arg("decrypt")
         .arg("--non-interactive")
         .env_remove("A8C_SECRETS_IDENTITY")
         .assert()
         .failure();
+    let combined = String::from_utf8_lossy(&assert.get_output().stderr).to_string()
+        + &String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        combined.contains("keys import") && combined.contains("A8C_SECRETS_IDENTITY"),
+        "expected key setup hint in output: {combined}"
+    );
+}
+
+#[test]
+fn decrypt_fails_when_no_private_key_without_non_interactive_flag() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_dir = temp.path().join("repo");
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&repo_dir).unwrap();
+    fs::create_dir_all(&home_dir).unwrap();
+
+    let repo_name = "demo-repo";
+    git_init_with_origin(&repo_dir, repo_name);
+
+    let dev_identity = age::x25519::Identity::generate();
+    let ci_identity = age::x25519::Identity::generate();
+    let dev_public = dev_identity.to_public().to_string();
+    let ci_public = ci_identity.to_public().to_string();
+    write_keys_pub(&repo_dir, &dev_public, &ci_public);
+
+    let plaintext = b"secret-data";
+    let ciphertext = encrypt_for(
+        &[dev_identity.to_public(), ci_identity.to_public()],
+        plaintext,
+    );
+    fs::write(repo_dir.join(".a8c-secrets/secret.json.age"), ciphertext).unwrap();
+
+    let assert = configured_command(&repo_dir, &home_dir)
+        .arg("decrypt")
+        .env_remove("A8C_SECRETS_IDENTITY")
+        .assert()
+        .failure();
+    let combined = String::from_utf8_lossy(&assert.get_output().stderr).to_string()
+        + &String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        combined.contains("keys import") && combined.contains("A8C_SECRETS_IDENTITY"),
+        "expected key setup hint in output: {combined}"
+    );
 }
 
 #[test]
@@ -584,13 +627,13 @@ fn setup_init_requires_interactive_tty() {
         .expect("wait_with_output on setup init");
     assert!(
         !out.status.success(),
-        "setup init should fail when stdin/stdout are not TTYs"
+        "setup init should fail when stdout is not a terminal"
     );
     let combined =
         String::from_utf8_lossy(&out.stderr).to_string() + &String::from_utf8_lossy(&out.stdout);
     assert!(
-        combined.contains("interactive terminal (TTY)"),
-        "expected TTY requirement message, got: {combined}"
+        combined.contains("stdout") && combined.contains("private key"),
+        "expected stdout/private key requirement message, got: {combined}"
     );
     assert!(
         !repo_dir.join(".a8c-secrets/keys.pub").exists(),
@@ -662,13 +705,13 @@ fn keys_rotate_requires_interactive_tty() {
         .expect("wait_with_output on keys rotate");
     assert!(
         !out.status.success(),
-        "keys rotate should fail when stdin/stdout are not TTYs"
+        "keys rotate should fail when stdout is not a terminal"
     );
     let combined =
         String::from_utf8_lossy(&out.stderr).to_string() + &String::from_utf8_lossy(&out.stdout);
     assert!(
-        combined.contains("interactive terminal (TTY)"),
-        "expected TTY requirement message, got: {combined}"
+        combined.contains("stdout") && combined.contains("private key"),
+        "expected stdout/private key requirement message, got: {combined}"
     );
 }
 
@@ -751,13 +794,13 @@ fn setup_nuke_fails_without_tty_and_preserves_repo_secrets_key_and_decrypted() {
         .expect("wait_with_output on setup nuke");
     assert!(
         !out.status.success(),
-        "setup nuke should fail when stdin/stdout are not TTYs"
+        "setup nuke should fail when stdin is not a terminal"
     );
     let combined =
         String::from_utf8_lossy(&out.stderr).to_string() + &String::from_utf8_lossy(&out.stdout);
     assert!(
-        combined.contains("interactive terminal (TTY)"),
-        "expected TTY requirement message, got: {combined}"
+        combined.contains("stdin") && combined.contains("terminal"),
+        "expected stdin terminal requirement message, got: {combined}"
     );
     assert!(
         repo_dir.join(".a8c-secrets").exists(),
@@ -1174,8 +1217,8 @@ fn rm_fails_without_non_interactive_flag_when_not_tty() {
     let combined = String::from_utf8_lossy(&assert.get_output().stderr).to_string()
         + &String::from_utf8_lossy(&assert.get_output().stdout);
     assert!(
-        combined.contains("interactive terminal (TTY)") && combined.contains("--non-interactive"),
-        "expected non-TTY error in output: {combined}"
+        combined.contains("stdin") && combined.contains("--non-interactive"),
+        "expected stdin / --non-interactive error in output: {combined}"
     );
     assert!(
         decrypted_path.exists(),

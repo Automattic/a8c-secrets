@@ -183,9 +183,15 @@ pub(crate) fn apply_key_rotation(
 /// Returns an error if repo/config/key discovery fails, the user aborts, or
 /// re-encryption reads/writes fail.
 pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
-    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+    if !std::io::stdout().is_terminal() {
         anyhow::bail!(
-            "`a8c-secrets keys rotate` must run in an interactive terminal (TTY) because it prints a private key to stdout."
+            "`a8c-secrets keys rotate` must not redirect stdout — it prints a new private key. \
+             Run it in a terminal so the key appears on screen (do not pipe or capture stdout)."
+        );
+    }
+    if !std::io::stdin().is_terminal() {
+        anyhow::bail!(
+            "`a8c-secrets keys rotate` requires stdin connected to a terminal for its interactive prompts."
         );
     }
 

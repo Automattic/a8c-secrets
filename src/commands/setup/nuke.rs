@@ -13,8 +13,10 @@ use crate::keys;
 /// Returns an error if repo/config discovery fails, user input fails, or any
 /// of the cleanup file operations fail.
 pub fn run() -> Result<()> {
-    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
-        anyhow::bail!("`a8c-secrets setup nuke` must run in an interactive terminal (TTY).");
+    if !std::io::stdin().is_terminal() {
+        anyhow::bail!(
+            "`a8c-secrets setup nuke` requires stdin connected to a terminal for confirmation."
+        );
     }
 
     let repo_root = fs_helpers::find_repo_root()?;

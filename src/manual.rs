@@ -52,8 +52,8 @@ GETTING STARTED
     2. Developer onboarding:
 
         cd my-repo
+        a8c-secrets keys import   # Paste the dev private key from Secret Store when prompted
         a8c-secrets decrypt
-        # Paste the dev private key from Secret Store when prompted
 
     3. Daily workflow:
 
@@ -62,17 +62,28 @@ GETTING STARTED
         a8c-secrets encrypt          # Encrypt any modified files
         git add .a8c-secrets/        # Commit encrypted changes
 
+    decrypt never prompts for a private key; run keys import first (or set
+    A8C_SECRETS_IDENTITY in CI).
+
     Orphan plaintext (after decrypt): if a decrypted file still exists under
     ~/.a8c-secrets/<host>/<org>/<name>/ but its .age was removed from the repo, decrypt
-    lists it and asks whether to delete the local copy (interactive only).
-    With --non-interactive or in CI (no TTY), those files are removed
-    automatically without prompting.
+    lists it. If stdin is a terminal and --non-interactive is not set, it asks before
+    deleting those local copies. Otherwise (stdin not a terminal, or
+    --non-interactive), they are removed automatically without prompting.
+
+    setup init and keys rotate require stdout connected to a terminal (private keys
+    are printed; do not redirect). keys rotate also needs stdin for prompts. setup
+    nuke and rm (without --non-interactive) need stdin for confirmation. edit uses
+    $EDITOR and prompts; intended for interactive use.
+
+    If stdout is not a terminal, private key blocks are redacted in output (defense in
+    depth); still run init/rotate in a real terminal to copy keys.
 
 COMMANDS
     Daily operations:
         decrypt [--non-interactive]       Decrypt .age files to ~/.a8c-secrets/<host>/<org>/<name>/
         encrypt [file ...] [--force]      Encrypt modified secrets back to .age
-        edit <file>                       Open in $EDITOR, encrypt if changed
+        edit <file>                       Open in $EDITOR, encrypt if changed (TTY required)
         rm <file>                         Remove secret (plaintext + .age)
         status                            Show sync state of all files
 

@@ -40,9 +40,9 @@ pub fn run(args: &RmArgs) -> Result<()> {
     }
 
     if !args.non_interactive {
-        if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+        if !std::io::stdin().is_terminal() {
             anyhow::bail!(
-                "`a8c-secrets rm` requires an interactive terminal (TTY) unless --non-interactive is provided."
+                "`a8c-secrets rm` requires stdin connected to a terminal for confirmation unless --non-interactive is provided."
             );
         }
         if !Confirm::new("Proceed?")

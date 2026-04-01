@@ -34,22 +34,22 @@ pub enum Command {
         long_about = "\
 Decrypt all .age files from .a8c-secrets/ into ~/.a8c-secrets/<host>/<org>/<name>/.
 
-On first run, if no private key is found, interactively prompts you to paste
-the dev private key from the Secret Store. In CI (non-TTY or --non-interactive),
-errors instead of prompting.
+Requires a private key: the local file from `a8c-secrets keys import`, or
+A8C_SECRETS_IDENTITY (typical in CI). If no key is available, the command fails with
+a hint to import or set the variable.
 
 If any file cannot be decrypted (wrong key, corrupt ciphertext), the command exits
 with a non-zero status after attempting every file.
 
 Orphan plaintext: if a file exists under ~/.a8c-secrets/<host>/<org>/<name>/ but its matching
 .age was removed from the repo (secret dropped from git), decrypt lists these
-orphans. In an interactive terminal session you are prompted before they are
-deleted. With --non-interactive, or when stdin is not a TTY (typical CI), orphan
-files are removed automatically without prompting.",
+orphans. When stdin is a terminal and --non-interactive is not set, you are prompted
+before they are deleted. Otherwise (stdin not a terminal, or --non-interactive),
+orphan files are removed automatically without prompting.",
         after_long_help = "\
 EXAMPLES:
-  a8c-secrets decrypt              # Interactive: prompts for key if needed
-  a8c-secrets decrypt --non-interactive  # CI: no key prompt; orphans removed without asking
+  a8c-secrets decrypt                    # Local: use key from keys import
+  a8c-secrets decrypt --non-interactive  # CI: set A8C_SECRETS_IDENTITY; orphans removed without asking
 
 ENVIRONMENT:
   A8C_SECRETS_IDENTITY    Overrides the private key (see top-level --help)"
@@ -87,7 +87,10 @@ Open a secret file in your editor for modification.
 Opens ~/.a8c-secrets/<host>/<org>/<name>/<file> in $EDITOR (default: vi on Unix / notepad on Windows). The value is parsed
 like shell words (program plus optional arguments; quote paths that contain spaces).
 Compares file content before and after the editor session — only encrypts if changed.
-If the file doesn't exist, prompts to create it.",
+If the file doesn't exist, prompts to create it.
+
+Requires stdin connected to a terminal for prompts (same idea as `rm` without
+--non-interactive).",
         after_long_help = "\
 EXAMPLES:
   a8c-secrets edit google-services.json   # Edit an existing secret
@@ -106,9 +109,9 @@ Deletes both the decrypted file at ~/.a8c-secrets/<host>/<org>/<name>/<file> and
 encrypted file at .a8c-secrets/<file>.age. Prompts for confirmation unless
 --non-interactive is provided.
 
-When run without --non-interactive, this command requires an interactive terminal
-(TTY). In non-TTY contexts (for example CI), it fails unless --non-interactive
-is explicitly passed.",
+When run without --non-interactive, stdin must be a terminal so you can confirm
+the deletion. In non-interactive environments (for example CI), pass
+--non-interactive explicitly.",
         after_long_help = "\
 EXAMPLES:
   a8c-secrets rm old-api-key.json
@@ -142,8 +145,8 @@ private key status, and each file's sync state:
 
 #[derive(Debug, clap::Args)]
 pub struct DecryptArgs {
-    /// Run without prompts (auto-removes orphans, errors on missing key).
-    /// Automatically enabled when stdin is not a TTY.
+    /// Never prompt before removing orphan plaintext; same as when stdin is not a
+    /// terminal.
     #[arg(long)]
     pub non_interactive: bool,
 }
@@ -216,7 +219,10 @@ After rotation, prints the new private key and next steps (Secret Store /
 CI secrets depending on whether you rotated the key you hold locally).
 
 NOTE: Key rotation does NOT rotate the actual secret values inside the
-encrypted files. You must separately rotate API keys, tokens, etc.",
+encrypted files. You must separately rotate API keys, tokens, etc.
+
+Requires stdout connected to a terminal so the new private key is shown on screen
+(do not redirect stdout). Requires stdin connected to a terminal for interactive prompts.",
         after_long_help = "\
 EXAMPLE:
   a8c-secrets keys rotate"
@@ -240,7 +246,10 @@ Initialize a8c-secrets in the current git repository.
 
 Creates .a8c-secrets/keys.pub, generates both dev and CI key pairs, and saves
 the dev private key locally. Derives the repo identifier from git remote `origin`
-and fails if auto-detection is unavailable.")]
+and fails if auto-detection is unavailable.
+
+Requires stdout connected to a terminal so private keys are shown on screen (do not
+redirect or capture stdout).")]
     Init,
 
     /// Remove all a8c-secrets data (repo files, local keys, decrypted files)
@@ -249,7 +258,9 @@ Completely remove a8c-secrets from the repository and local machine.
 
 Deletes .a8c-secrets/ from the repo, the private key at
 ~/.a8c-secrets/keys/<host>/<org>/<name>.key, and all decrypted files at
-~/.a8c-secrets/<host>/<org>/<name>/. Requires typing the repo identifier to confirm.")]
+~/.a8c-secrets/<host>/<org>/<name>/. Requires typing the repo identifier to confirm.
+
+Requires stdin connected to a terminal to type the repo identifier confirmation.")]
     Nuke,
 
     /// Output shell completion script

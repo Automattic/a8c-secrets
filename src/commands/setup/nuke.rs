@@ -1,6 +1,7 @@
-use std::io::{self, Write};
+use std::io::IsTerminal;
 
 use anyhow::Result;
+use inquire::Text;
 
 use crate::config::{self, REPO_SECRETS_DIR};
 use crate::keys;
@@ -12,6 +13,10 @@ use crate::keys;
 /// Returns an error if repo/config discovery fails, user input fails, or any
 /// of the cleanup file operations fail.
 pub fn run() -> Result<()> {
+    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+        anyhow::bail!("`a8c-secrets setup nuke` must run in an interactive terminal (TTY).");
+    }
+
     let repo_root = config::find_repo_root()?;
     let repo_identifier = config::RepoIdentifier::auto_detect()?;
 
@@ -31,13 +36,13 @@ pub fn run() -> Result<()> {
         println!("  {}  (decrypted files)", decrypted.display());
     }
     println!();
-    print!("Type the repo identifier to confirm ({repo_identifier}): ");
-    io::stdout().flush()?;
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
+    let input = Text::new(&format!(
+        "Type the repo identifier to confirm ({repo_identifier})"
+    ))
+    .prompt()
+    .map_err(|e| anyhow::anyhow!(e))?;
     if input.trim() != repo_identifier.as_str() {
-        println!("Aborted.");
-        return Ok(());
+        anyhow::bail!("Aborted.");
     }
 
     // Delete in-repo .a8c-secrets/

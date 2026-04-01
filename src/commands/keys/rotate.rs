@@ -1,23 +1,13 @@
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use inquire::{Confirm, InquireError, Select};
+use inquire::{Confirm, Select};
 use std::io::IsTerminal;
 
 use super::{PUBLIC_KEY_LIST_LEGEND, PublicKeyListRow};
 use crate::config::{self, REPO_SECRETS_DIR};
 use crate::crypto::{CryptoEngine, PrivateKey, PublicKey};
 use crate::keys;
-
-fn inquire_to_anyhow<T>(result: inquire::error::InquireResult<T>) -> Result<T> {
-    result.map_err(|e| {
-        if matches!(e, InquireError::OperationCanceled) {
-            anyhow::anyhow!("Aborted.")
-        } else {
-            anyhow::anyhow!("{e}")
-        }
-    })
-}
 
 fn select_public_key_to_rotate(
     public_keys: &[PublicKey],
@@ -30,25 +20,21 @@ fn select_public_key_to_rotate(
         })
         .collect();
 
-    inquire_to_anyhow(
-        Select::new("Select which key to rotate", choices)
-            .without_filtering()
-            .prompt(),
-    )
+    Select::new("Select which key to rotate", choices)
+        .without_filtering()
+        .prompt()
+        .map_err(|e| anyhow::anyhow!(e))
 }
 
 fn confirm_rotation() -> Result<()> {
-    let ok = inquire_to_anyhow(
-        Confirm::new("Proceed with this key rotation?")
-            .with_default(false)
-            .with_help_message("y = continue, n or Enter = cancel")
-            .prompt(),
-    )?;
-    if ok {
-        Ok(())
-    } else {
+    if !Confirm::new("Proceed with this key rotation?")
+        .with_default(false)
+        .prompt()
+        .map_err(|e| anyhow::anyhow!(e))?
+    {
         anyhow::bail!("Aborted.");
     }
+    Ok(())
 }
 
 fn print_rotation_reminder() {

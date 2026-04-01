@@ -5,6 +5,7 @@
 
 use age::secrecy::ExposeSecret;
 use anyhow::{Context, Result};
+use inquire::Password;
 use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -179,8 +180,12 @@ pub fn prompt_and_import_private_key(repo_identifier: &RepoIdentifier) -> Result
     );
     println!();
 
-    let raw = if io::stdin().is_terminal() {
-        Zeroizing::new(rpassword::prompt_password("Paste private key: ")?)
+    let raw = if io::stdin().is_terminal() && io::stdout().is_terminal() {
+        Zeroizing::new(
+            Password::new("Paste private key:")
+                .prompt()
+                .map_err(|e| anyhow::anyhow!(e))?,
+        )
     } else {
         let mut line = Zeroizing::new(String::new());
         io::stdin().lock().read_line(&mut line)?;

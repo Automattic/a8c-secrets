@@ -1,7 +1,8 @@
 use std::collections::BTreeSet;
-use std::io::{self, IsTerminal, Write};
+use std::io::{self, IsTerminal};
 
 use anyhow::{Context, Result};
+use inquire::Confirm;
 
 use crate::cli::DecryptArgs;
 use crate::config::{self, REPO_SECRETS_DIR};
@@ -25,7 +26,8 @@ fn compute_orphans(local_files: &[String], age_files: &BTreeSet<String>) -> Vec<
 /// encrypted files cannot be read, any ciphertext cannot be decrypted, output files
 /// cannot be written, or orphan cleanup fails.
 pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
-    let interactive = !args.non_interactive && io::stdin().is_terminal();
+    let interactive =
+        !args.non_interactive && io::stdin().is_terminal() && io::stdout().is_terminal();
 
     let repo_root = config::find_repo_root()?;
     let age_files: BTreeSet<String> = config::list_age_files(&repo_root)?.into_iter().collect();
@@ -116,11 +118,10 @@ fn handle_orphans(
     }
 
     let should_remove = if interactive {
-        print!("Remove orphan files? [y/N] ");
-        io::stdout().flush()?;
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-        input.trim().eq_ignore_ascii_case("y")
+        Confirm::new("Remove orphan files?")
+            .with_default(false)
+            .prompt()
+            .map_err(|e| anyhow::anyhow!(e))?
     } else {
         println!("Non-interactive mode: auto-removing orphans.");
         true

@@ -12,7 +12,7 @@ pub(crate) const PUBLIC_KEY_LIST_LEGEND: &str =
 
 /// One line in a public-key list: optional 🔑 when this recipient matches the user’s local private key.
 ///
-/// Used for `keys show` output and as the `inquire::Select` option type for `keys rotate`.
+/// Used for `keys show` output and as the interactive selection row type for `keys rotate`.
 #[derive(Clone)]
 pub(crate) struct PublicKeyListRow {
     pub(crate) key: PublicKey,

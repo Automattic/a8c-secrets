@@ -20,7 +20,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     let repo_root = config::find_repo_root()?;
     let repo_identifier = config::repo_identifier(&repo_root)?;
 
-    println!("Repo: {repo_identifier}");
+    println!("Repo Identifier: {repo_identifier}");
 
     let public_keys_result = keys::load_public_keys(&repo_root);
     match &public_keys_result {

@@ -23,7 +23,7 @@ FILE LAYOUT
     In the repository (committed to git):
 
         .a8c-secrets/
-        ├── repo-id                  Canonical host/org/repo (one line); written at setup init
+        ├── repo-id                  Canonical repo@host@org (one line); written at setup init
         ├── keys.pub                 Public keys (dev + CI), one per line
         ├── google-services.json.age
         └── api-keys.yml.age
@@ -32,13 +32,13 @@ FILE LAYOUT
 
         ~/.a8c-secrets/
         ├── keys/                    Directory mode 0700
-        │   └── <host>/<org>/<name>.key   Private key, file mode 0600
-        └── <host>/<org>/<name>/          Decrypted secret files
+        │   └── <repo@host@org>.key       Private key, file mode 0600
+        └── <repo@host@org>/              Decrypted secret files
             ├── google-services.json
             └── api-keys.yml
 
 REPO IDENTIFIER (repo-id)
-    The canonical host/org/repo string lives in .a8c-secrets/repo-id (one line).
+    The canonical repo@host@org string lives in .a8c-secrets/repo-id (one line).
     `setup init` creates it from git `origin` and you commit it with keys.pub.
     Other commands read repo-id only, so local keys and decrypted directories do
     not follow a renamed or forked origin.
@@ -57,7 +57,7 @@ GETTING STARTED
 
         cd my-repo
         a8c-secrets setup init
-        # Follow the printed instructions for Secret Store + Buildkite
+        # Follow the printed instructions (Secret Store for dev + CI, then Buildkite)
 
     2. Developer onboarding:
 
@@ -76,7 +76,7 @@ GETTING STARTED
     A8C_SECRETS_IDENTITY in CI).
 
     Orphan plaintext (after decrypt): if a decrypted file still exists under
-    ~/.a8c-secrets/<host>/<org>/<name>/ but its .age was removed from the repo, decrypt
+    ~/.a8c-secrets/<repo@host@org>/ but its .age was removed from the repo, decrypt
     lists it. If stdin is a terminal and --non-interactive is not set, it asks before
     deleting those local copies. Otherwise (stdin not a terminal, or
     --non-interactive), they are removed automatically without prompting.
@@ -92,7 +92,7 @@ GETTING STARTED
 
 COMMANDS
     Daily operations:
-        decrypt [--non-interactive]       Decrypt .age files to ~/.a8c-secrets/<host>/<org>/<name>/
+        decrypt [--non-interactive]       Decrypt .age files to ~/.a8c-secrets/<repo@host@org>/
         encrypt [file ...] [--force]      Encrypt modified secrets back to .age
         edit <file>                       Open in $EDITOR, encrypt if changed (interactive; prompts require TTY)
         rm <file>                         Remove secret (plaintext + .age)
@@ -123,11 +123,12 @@ KEY MANAGEMENT
     Each repo has two `age` key pairs:
 
         dev   Shared by all developers. Private key in Secret Store.
-        ci    Used by CI agents (Buildkite). Private key in Buildkite secrets.
+        ci    Used by CI agents (Buildkite). Private key in Secret Store (Apps Infrastructure authorized) and in Buildkite secrets.
 
-    Secret Store entry names (typical convention; <host>/<org>/<name> is the repo identifier):
-        a8c-secrets dev private key for <host>/<org>/<name>
-        a8c-secrets CI private key for <host>/<org>/<name>
+    Secret Store entry names (typical convention):
+        a8c-secrets - <repo-name> - dev private key
+        a8c-secrets - <repo-name> - CI private key
+        Set the entry Username field to the full repo@host@org id (disambiguates same repo name across orgs).
 
     The tool identifies which key is yours by deriving the public key from
     your local private key and matching it against entries in keys.pub.
@@ -139,7 +140,7 @@ KEY MANAGEMENT
     Key rotation (employee offboarding):
         Treat age keys and provider/API secrets separately. `keys rotate` requires every file to
         show in sync in `status` first, then re-encrypts each .age from matching plaintext under
-        ~/.a8c-secrets/<host>/<org>/<name>/ so repo ciphertext matches your local secrets.
+        ~/.a8c-secrets/<repo@host@org>/ so repo ciphertext matches your local secrets.
 
         Recommended order:
         1. Revoke or disable old credentials at each provider when your runbook allows.
@@ -163,11 +164,11 @@ ENVIRONMENT VARIABLES
         vi (Unix) or notepad (Windows).
 
 FILES
-    .a8c-secrets/repo-id           Canonical host/org/repo id (committed, one line)
+    .a8c-secrets/repo-id           Canonical repo@host@org id (committed, one line)
     .a8c-secrets/keys.pub          Public keys (committed)
     .a8c-secrets/*.age             Encrypted secrets (committed)
-    ~/.a8c-secrets/keys/<host>/<org>/<name>.key Dev private key (local, mode 0600)
-    ~/.a8c-secrets/<host>/<org>/<name>/*        Decrypted secrets (local)
+    ~/.a8c-secrets/keys/<repo@host@org>.key Dev private key (local, mode 0600)
+    ~/.a8c-secrets/<repo@host@org>/*            Decrypted secrets (local)
 
 SEE ALSO
     `age` specification:     https://age-encryption.org/v1

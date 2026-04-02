@@ -12,7 +12,7 @@ pub(crate) use crate::models::{RepoIdentifier, SecretFileName};
 
 /// Name of the in-repo config directory.
 pub(crate) const REPO_SECRETS_DIR: &str = ".a8c-secrets";
-/// File under [`REPO_SECRETS_DIR`] storing the canonical `host/org/repo` identifier (one line).
+/// File under [`REPO_SECRETS_DIR`] storing the canonical `repo@host@org` identifier (one line).
 pub(crate) const REPO_ID_FILE: &str = "repo-id";
 /// Name of the local home directory used to store private/decrypted secrets.
 pub(crate) const HOME_SECRETS_DIR: &str = ".a8c-secrets";
@@ -47,7 +47,7 @@ fn repo_id_file_path(repo_root: &Path) -> PathBuf {
 
 /// Read and validate the canonical repo identifier from `.a8c-secrets/repo-id`.
 ///
-/// The file must contain exactly one `host/org/repo` string. Trailing `\r` and `\n`
+/// The file must contain exactly one `repo@host@org` string. Trailing `\r` and `\n`
 /// bytes are removed (typical line endings); there is no dedicated `std` “chomp” API,
 /// so this uses [`str::trim_end_matches`].
 ///
@@ -67,11 +67,11 @@ pub(crate) fn repo_identifier(repo_root: &Path) -> Result<RepoIdentifier> {
         .with_context(|| format!("Failed to read {}", path.display()))?;
     let trimmed = raw.trim_end_matches(['\n', '\r']);
     if trimmed.is_empty() {
-        anyhow::bail!("{} is empty (expected host/org/repo)", path.display());
+        anyhow::bail!("{} is empty (expected repo@host@org)", path.display());
     }
     RepoIdentifier::try_from(trimmed.to_string()).with_context(|| {
         format!(
-            "Invalid repo identifier in {} (expected host/org/repo)",
+            "Invalid repo identifier in {} (expected repo@host@org)",
             path.display()
         )
     })
@@ -80,7 +80,7 @@ pub(crate) fn repo_identifier(repo_root: &Path) -> Result<RepoIdentifier> {
 /// Write `.a8c-secrets/repo-id` after `setup init`.
 pub(crate) fn write_repo_id_file(repo_root: &Path, repo_identifier: &RepoIdentifier) -> Result<()> {
     let path = repo_id_file_path(repo_root);
-    let content = format!("{}\n", repo_identifier.as_str());
+    let content = format!("{repo_identifier}\n");
     std::fs::write(&path, content.as_bytes())
         .with_context(|| format!("Failed to write {}", path.display()))?;
     Ok(())
@@ -109,7 +109,7 @@ pub(crate) fn secrets_home() -> Result<PathBuf> {
 ///
 /// Returns an error if the local secrets home directory cannot be determined.
 pub(crate) fn decrypted_dir(repo_identifier: &RepoIdentifier) -> Result<PathBuf> {
-    Ok(secrets_home()?.join(repo_identifier.as_path()))
+    Ok(secrets_home()?.join(repo_identifier.to_string()))
 }
 
 /// List `.age` file stems in `.a8c-secrets/` (e.g. "google-services.json" from "google-services.json.age").
@@ -155,7 +155,7 @@ pub(crate) fn list_age_files(repo_root: &Path) -> Result<Vec<SecretFileName>> {
     Ok(names)
 }
 
-/// List decrypted files in `~/.a8c-secrets/<host>/<org>/<name>/`.
+/// List decrypted files in `~/.a8c-secrets/<repo@host@org>/`.
 ///
 /// Each file name must pass [`SecretFileName`] validation, matching rules for
 /// secret basenames under `.a8c-secrets/`.
@@ -297,10 +297,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let secrets = dir.path().join(REPO_SECRETS_DIR);
         fs::create_dir_all(&secrets).unwrap();
-        fs::write(secrets.join(REPO_ID_FILE), "github.com/org/myrepo\n").unwrap();
+        fs::write(secrets.join(REPO_ID_FILE), "myrepo@github.com@org\n").unwrap();
 
         let id = repo_identifier(dir.path()).unwrap();
-        assert_eq!(id.as_str(), "github.com/org/myrepo");
+        assert_eq!(id.to_string(), "myrepo@github.com@org");
     }
 
     #[test]
@@ -308,7 +308,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let secrets = dir.path().join(REPO_SECRETS_DIR);
         fs::create_dir_all(&secrets).unwrap();
-        fs::write(secrets.join(REPO_ID_FILE), " github.com/org/myrepo\n").unwrap();
+        fs::write(secrets.join(REPO_ID_FILE), " myrepo@github.com@org\n").unwrap();
 
         assert!(repo_identifier(dir.path()).is_err());
     }
@@ -318,10 +318,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let secrets = dir.path().join(REPO_SECRETS_DIR);
         fs::create_dir_all(&secrets).unwrap();
-        fs::write(secrets.join(REPO_ID_FILE), "github.com/org/myrepo\r\n").unwrap();
+        fs::write(secrets.join(REPO_ID_FILE), "myrepo@github.com@org\r\n").unwrap();
 
         let id = repo_identifier(dir.path()).unwrap();
-        assert_eq!(id.as_str(), "github.com/org/myrepo");
+        assert_eq!(id.to_string(), "myrepo@github.com@org");
     }
 
     #[test]
@@ -337,9 +337,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let secrets = dir.path().join(REPO_SECRETS_DIR);
         fs::create_dir_all(&secrets).unwrap();
-        let id = RepoIdentifier::try_from("github.com/acme/widget".to_string()).unwrap();
+        let id = RepoIdentifier::try_from("widget@github.com@acme".to_string()).unwrap();
         write_repo_id_file(dir.path(), &id).unwrap();
         let loaded = repo_identifier(dir.path()).unwrap();
-        assert_eq!(loaded.as_str(), "github.com/acme/widget");
+        assert_eq!(loaded.to_string(), "widget@github.com@acme");
     }
 }

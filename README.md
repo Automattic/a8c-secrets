@@ -7,7 +7,7 @@ It is aimed to make it easy to deal with secret files that are needed for develo
 Internally, it uses the [`age`](https://age-encryption.org/v1) encryption specification to encrypt/decrypt secret files, and offers some additional key features compared to using [the official `age` binary](https://github.com/FiloSottile/age) directly:
  - It decrypts all the secrets present in a repository using a single `a8c-secrets decrypt` command (compared to having to call the official `age` binary on each file one by one)
  - It automatically manages the public and private keys in the right places on the user's computer (compared to users having to provide the key to the official `age` command line explicitly)
- - It ensures the secrets are decrypted **outside** the repository working tree (in `~/.a8c-secrets/<host>/<org>/<name>/`), to avoid accidental commits of secrets and reduce access from AI agents running in repo.
+ - It ensures the secrets are decrypted **outside** the repository working tree (in `~/.a8c-secrets/<repo@host@org>/`), to avoid accidental commits of secrets and reduce access from AI agents running in repo.
  - It provides help messages tailored to our usage of the tool at Automattic (references to Secrets Store, dedicated help messages…)
 
 ## Install
@@ -29,7 +29,7 @@ curl -fsSL https://raw.githubusercontent.com/Automattic/a8c-secrets/main/install
 ```sh
 cd my-repo
 a8c-secrets setup init
-# Follow the printed instructions for Secret Store + Buildkite
+# Follow the printed instructions (Secret Store for dev + CI, then Buildkite)
 ```
 
 **Developer onboarding:**
@@ -65,12 +65,12 @@ In the repo (committed):              On the developer's machine (never in git):
 
 .a8c-secrets/                          ~/.a8c-secrets/
 ├── repo-id             canonical id   ├── keys/
-├── keys.pub            public keys    │   └── <host>/<org>/<name>.key  private key (0600)
-├── secret.json.age     encrypted      └── <host>/<org>/<name>/         decrypted files
+├── keys.pub            public keys    │   └── <repo@host@org>.key        private key (0600)
+├── secret.json.age     encrypted      └── <repo@host@org>/               decrypted files
 └── api-keys.yml.age    encrypted          └── api-keys.yml
 ```
 
-The `repo-id` file holds one line: `host/org/repo` (lowercase). It is written by `a8c-secrets setup init` using your git `origin` URL, then committed. Daily commands read this file so local keys and decrypted paths stay stable if `origin` changes (forks, mirrors).
+The `repo-id` file holds one line: `repo@host@org` (lowercase), e.g. `wordpress-ios@github.com@automattic`. It is written by `a8c-secrets setup init` using your git `origin` URL, then committed. Daily commands read this file so local keys and decrypted paths stay stable if `origin` changes (forks, mirrors).
 
 ## Design decisions
 
@@ -81,15 +81,15 @@ Cross-platform binaries (macOS, Linux, Windows) from a single codebase. Existing
 Using the [`age` crate](https://docs.rs/age/latest/age/) eliminates the external dependency — users don't need to install `age` separately, and there's no PATH injection risk. The crate implements the same [`age-encryption.org/v1`](https://age-encryption.org/v1) spec as the [Go reference implementation](https://github.com/FiloSottile/age). A trait-based abstraction (`CryptoEngine`) allows swapping to a subprocess engine if ever needed.
 
 ### Why decrypt outside the working tree?
-Decrypted secrets in `~/.a8c-secrets/<host>/<org>/<name>/` can never be accidentally committed (even a `.gitignore` typo can't expose them) and are invisible to AI agents restricted to the repo working copy.
+Decrypted secrets in `~/.a8c-secrets/<repo@host@org>/` can never be accidentally committed (even a `.gitignore` typo can't expose them) and are invisible to AI agents restricted to the repo working copy.
 
 ### Two key pairs per repo (dev + CI)
-The dev private key is shared by all developers via Secret Store. The CI private key is injected as a Buildkite secret via `A8C_SECRETS_IDENTITY`. Which key is yours is determined by public key derivation (matching your private key against `keys.pub`). Lines starting with `#` in `keys.pub` are comments and are ignored when reading recipients (same as age); they are optional for humans only.
+The dev private key is shared by all developers via Secret Store. The CI private key is stored in Secret Store (with Apps Infrastructure authorized) and injected in CI as a Buildkite secret via `A8C_SECRETS_IDENTITY`. Which key is yours is determined by public key derivation (matching your private key against `keys.pub`). Lines starting with `#` in `keys.pub` are comments and are ignored when reading recipients (same as age); they are optional for humans only.
 
 ### Secret Store entry names
-Those are human-created. Replace `<host>/<org>/<name>` with your repo identifier:
- - dev private key → `a8c-secrets dev private key for <host>/<org>/<name>`
- - CI private key → `a8c-secrets CI private key for <host>/<org>/<name>`.
+Those are human-created. Use the short title and set **Username** to the full id:
+ - dev private key → `a8c-secrets - <repo-name> - dev private key` (Username: full `repo@host@org`)
+ - CI private key → `a8c-secrets - <repo-name> - CI private key` (Username: full `repo@host@org`).
 
 ### Smart encryption
 Since `age` uses random nonces, encrypting identical content twice produces different ciphertext. The `encrypt` command decrypts existing `.age` files in memory and compares byte-for-byte with decrypted plaintext, only re-encrypting when content actually changed. This prevents noisy git diffs.
@@ -99,13 +99,13 @@ Use `--force` after key rotation to bypass the smart comparison and re-encrypt f
 No subdirectories inside `.a8c-secrets/`. Name collisions (e.g. two `google-services.json` for different modules) are handled with unique flat names like `wear-google-services.json`.
 
 ### Secret file names
-Each secret is a single filename (e.g. `Secrets.swift`), not a relative path. The `edit`, `encrypt <file …>`, and `rm` commands reject names that contain path separators, `..`, or other non-flat syntax so outputs stay under `.a8c-secrets/` and `~/.a8c-secrets/<host>/<org>/<name>/`.
+Each secret is a single filename (e.g. `Secrets.swift`), not a relative path. The `edit`, `encrypt <file …>`, and `rm` commands reject names that contain path separators, `..`, or other non-flat syntax so outputs stay under `.a8c-secrets/` and `~/.a8c-secrets/<repo@host@org>/`.
 
 ### Memory hygiene
 Decrypted file contents are held in [`zeroize`](https://docs.rs/zeroize/) buffers where practical so they are cleared when dropped. In-memory private keys are represented as [`age::x25519::Identity`](https://docs.rs/age/latest/age/x25519/struct.Identity.html), which wraps secret material with age’s own zeroizing discipline.
 
 ### `decrypt` and orphan plaintext files
-If a file still exists under `~/.a8c-secrets/<host>/<org>/<name>/` but its `.age` was removed from the repository (for example the team deleted a secret from git), `decrypt` reports these as orphans.
+If a file still exists under `~/.a8c-secrets/<repo@host@org>/` but its `.age` was removed from the repository (for example the team deleted a secret from git), `decrypt` reports these as orphans.
  - If stdin is connected to an interactive terminal and `--non-interactive` is not set: the tool will **prompt before deleting**. This is for when a developer runs the command locally, to avoid accidentally removing e.g. a plaintext secret they just added and forgot to encrypt (and commit the `.age`) first.
  - If stdin is not an interactive terminal, or `--non-interactive` is set (typical CI): orphan files are removed automatically **without prompting**. That keeps CI from blocking on a prompt; those environments also typically should not keep extra unencrypted plaintext around.
 
@@ -123,12 +123,12 @@ On employee offboarding (or when rotating CI’s key), treat **age keys** (`keys
 
 ### What `keys rotate` does
 
-It refuses to run until **`a8c-secrets status` shows every secret as “in sync”** (no encrypted-only, decrypted-only, or modified local copy). Then it updates `keys.pub` and **re-encrypts each `.age` file from the matching plaintext under `~/.a8c-secrets/<host>/<org>/<name>/`**, so new ciphertext matches your local decrypted files. If anything is out of sync, fix it with `decrypt` / `encrypt` (or remove stray files) and retry.
+It refuses to run until **`a8c-secrets status` shows every secret as “in sync”** (no encrypted-only, decrypted-only, or modified local copy). Then it updates `keys.pub` and **re-encrypts each `.age` file from the matching plaintext under `~/.a8c-secrets/<repo@host@org>/`**, so new ciphertext matches your local decrypted files. If anything is out of sync, fix it with `decrypt` / `encrypt` (or remove stray files) and retry.
 
 ### Recommended order
 
 1. **Revoke or disable old credentials** at each provider as soon as your runbook allows (so stolen keys stop working at the API).
-2. **Run `a8c-secrets keys rotate`** — interactive: pick the recipient, confirm; the tool prints the new private key and re-encrypts `.age` files from your in-sync plaintext under `~/.a8c-secrets/<host>/<org>/<name>/`.
+2. **Run `a8c-secrets keys rotate`** — interactive: pick the recipient, confirm; the tool prints the new private key and re-encrypts `.age` files from your in-sync plaintext under `~/.a8c-secrets/<repo@host@org>/`.
 3. **Update Secret Store / CI** (or equivalent) with the new private key; notify the team to `keys import` when the dev key changed.
 4. **Issue new provider credentials if needed**, update the decrypted secret files, then **`a8c-secrets encrypt`** — usually **`--force`** right after a key rotation. Commit `keys.pub` and `.age` changes (and any follow-up commits for new secret content).
 

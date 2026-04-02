@@ -56,7 +56,7 @@ fn print_rotation_reminder() {
     println!(
         "  • This command requires every secret to show \"in sync\" in `a8c-secrets status` first. \
          It then re-encrypts each `.age` from the matching plaintext in your repo's decrypted \
-         directory under ~/.a8c-secrets/<host>/<org>/<name>/, so new ciphertext matches your \
+         directory under ~/.a8c-secrets/<repo@host@org>/, so new ciphertext matches your \
          local decrypted files (not stale `.age` blobs if they had drifted)."
     );
     println!();
@@ -88,7 +88,7 @@ fn print_confirmation_plan(
     );
     let decrypted_hint = decrypted_dir_display
         .as_deref()
-        .unwrap_or("~/.a8c-secrets/<host>/<org>/<repo>/");
+        .unwrap_or("~/.a8c-secrets/<repo@host@org>/");
     if age_files.is_empty() {
         println!(
             " - (No `.age` files under `{}` to re-encrypt)",
@@ -115,6 +115,7 @@ fn print_confirmation_plan(
             " - Update the Secret Store entry \"{}\" with the new private key",
             keys::secret_store_entry_name(repo_identifier, false)
         );
+        println!("   (Username field: {repo_identifier})");
         println!(" - Notify the team to run `a8c-secrets keys import` where needed");
         println!(" - Commit the changes under `.a8c-secrets/` (e.g. keys.pub and *.age files)");
     } else {
@@ -122,6 +123,7 @@ fn print_confirmation_plan(
             " - Update the Secret Store entry \"{}\" with the new private key",
             keys::secret_store_entry_name(repo_identifier, true)
         );
+        println!("   (Username field: {repo_identifier})");
         println!(
             " - Update CI secrets for this repo (e.g. Buildkite `A8C_SECRETS_IDENTITY`, or anywhere the old private key was configured) with the new private key"
         );
@@ -338,7 +340,7 @@ mod tests {
         temp_env::with_var("A8C_SECRETS_HOME", Some(secrets_home_str), || {
             let repo_dir = tempfile::tempdir().unwrap();
             let repo_identifier =
-                config::RepoIdentifier::try_from("github.com/org/demo-repo".to_string()).unwrap();
+                config::RepoIdentifier::try_from("demo-repo@github.com@org".to_string()).unwrap();
             fs::create_dir_all(repo_dir.path().join(REPO_SECRETS_DIR)).unwrap();
 
             let old_dev_identity = age::x25519::Identity::generate();
@@ -363,7 +365,7 @@ mod tests {
             let age_path = repo_dir.path().join(".a8c-secrets/secret.txt.age");
             fs::write(&age_path, ciphertext).unwrap();
 
-            let decrypted_dir = secrets_home.join(repo_identifier.as_path());
+            let decrypted_dir = secrets_home.join(repo_identifier.to_string());
             fs::create_dir_all(&decrypted_dir).unwrap();
             fs::write(decrypted_dir.join("secret.txt"), plaintext).unwrap();
 
@@ -427,7 +429,7 @@ mod tests {
         temp_env::with_var("A8C_SECRETS_HOME", Some(secrets_home_str), || {
             let repo_dir = tempfile::tempdir().unwrap();
             let repo_identifier =
-                config::RepoIdentifier::try_from("github.com/org/demo-repo".to_string()).unwrap();
+                config::RepoIdentifier::try_from("demo-repo@github.com@org".to_string()).unwrap();
             fs::create_dir_all(repo_dir.path().join(REPO_SECRETS_DIR)).unwrap();
 
             let old_dev_identity = age::x25519::Identity::generate();
@@ -455,7 +457,7 @@ mod tests {
             )
             .unwrap();
 
-            let decrypted_dir = secrets_home.join(repo_identifier.as_path());
+            let decrypted_dir = secrets_home.join(repo_identifier.to_string());
             fs::create_dir_all(&decrypted_dir).unwrap();
             fs::write(decrypted_dir.join("secret.txt"), plaintext).unwrap();
 

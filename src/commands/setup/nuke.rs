@@ -51,7 +51,7 @@ pub fn run() -> Result<()> {
     ))
     .prompt()
     .map_err(|e| anyhow::anyhow!(e))?;
-    if input.trim() != repo_identifier.as_str() {
+    if input.trim() != repo_identifier.to_string() {
         anyhow::bail!("Aborted.");
     }
 
@@ -79,12 +79,12 @@ pub fn run() -> Result<()> {
     println!("Reminders:");
     println!("  - Remove Secret Store entries for this repo if no longer needed:");
     println!(
-        "      {}",
-        keys::secret_store_entry_name(&repo_identifier, false)
+        "      {}  (Username: {repo_identifier})",
+        keys::secret_store_entry_name(&repo_identifier, false),
     );
     println!(
-        "      {}",
-        keys::secret_store_entry_name(&repo_identifier, true)
+        "      {}  (Username: {repo_identifier})",
+        keys::secret_store_entry_name(&repo_identifier, true),
     );
     println!("  - Remove the Buildkite A8C_SECRETS_IDENTITY secret if applicable");
     println!("  - Commit the deletion of {REPO_SECRETS_DIR}/");

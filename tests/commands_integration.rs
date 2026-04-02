@@ -68,19 +68,13 @@ fn configured_command(repo_dir: &Path, home_dir: &Path) -> Command {
 }
 
 fn repo_identifier(repo_name: &str) -> String {
-    format!("github.com/org/{repo_name}")
+    format!("{repo_name}@github.com@org")
 }
 
 fn local_key_path(home_dir: &Path, repo_name: &str) -> PathBuf {
-    let mut path = secrets_home(home_dir)
+    secrets_home(home_dir)
         .join("keys")
-        .join(repo_identifier(repo_name));
-    if let Some(file_name) = path.file_name() {
-        let mut new_name = file_name.to_os_string();
-        new_name.push(".key");
-        path.set_file_name(new_name);
-    }
-    path
+        .join(format!("{}.key", repo_identifier(repo_name)))
 }
 
 /// `status` prints the same emoji triplets in the legend as on file rows; tests must match a
@@ -289,7 +283,7 @@ fn decrypt_respects_repo_id_file_over_origin() {
         .expect("git remote add");
     assert!(status.success(), "git remote add failed");
 
-    let canonical = "github.com/automattic/canonical-repo";
+    let canonical = "canonical-repo@github.com@automattic";
     write_repo_id(&repo_dir, canonical);
 
     let dev_identity = age::x25519::Identity::generate();
@@ -313,7 +307,7 @@ fn decrypt_respects_repo_id_file_over_origin() {
         .assert()
         .success();
 
-    let out_dir = secrets_home(&home_dir).join(Path::new(canonical));
+    let out_dir = secrets_home(&home_dir).join(canonical);
     assert_eq!(fs::read(out_dir.join("secret.json")).unwrap(), plaintext);
 }
 
@@ -573,7 +567,7 @@ fn status_succeeds_for_configured_repo() {
 
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     assert!(
-        stdout.contains("Repo: github.com/org/demo-repo"),
+        stdout.contains("Repo Identifier: demo-repo@github.com@org"),
         "unexpected stdout: {stdout}"
     );
     assert!(
@@ -747,7 +741,7 @@ fn status_works_inside_git_worktree_checkout() {
 
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     assert!(
-        stdout.contains("Repo: github.com/org/demo"),
+        stdout.contains("Repo Identifier: demo@github.com@org"),
         "expected status output from worktree checkout, got: {stdout}"
     );
 }

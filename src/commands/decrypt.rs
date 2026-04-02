@@ -46,7 +46,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
 
     let private_key = keys::get_private_key(&repo_identifier).with_context(|| {
         format!(
-            "No private key for '{repo_identifier}'. Run `a8c-secrets keys import` with the dev key from Secret Store, or set A8C_SECRETS_IDENTITY (for example in CI)."
+            "Failed to obtain private key for '{repo_identifier}'. If you haven't configured one yet, run `a8c-secrets keys import` with the dev key from Secret Store, or set A8C_SECRETS_IDENTITY (for example in CI)."
         )
     })?;
 

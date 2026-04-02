@@ -27,7 +27,7 @@ pub struct Cli {
     pub command: Command,
 }
 
-/// `status` subcommand long help (emoji column must match [`SecretFileStatus`](crate::models::SecretFileStatus) `Display`; unit tests assert that).
+/// `status` subcommand long help.
 pub(crate) const STATUS_LONG_ABOUT: &str = concat!(
     "Show the sync status of all secret files.\n\n",
     "Displays the repo identifier from .a8c-secrets/repo-id, how many public keys were read from ",

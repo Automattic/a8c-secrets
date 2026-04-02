@@ -79,14 +79,12 @@ pub fn run() -> Result<()> {
     println!("Reminders:");
     println!("  - Remove Secret Store entries for this repo if no longer needed:");
     println!(
-        "      {}  (Username: {})",
+        "      {}  (Username: {repo_identifier})",
         keys::secret_store_entry_name(&repo_identifier, false),
-        repo_identifier.to_string()
     );
     println!(
-        "      {}  (Username: {})",
+        "      {}  (Username: {repo_identifier})",
         keys::secret_store_entry_name(&repo_identifier, true),
-        repo_identifier.to_string()
     );
     println!("  - Remove the Buildkite A8C_SECRETS_IDENTITY secret if applicable");
     println!("  - Commit the deletion of {REPO_SECRETS_DIR}/");

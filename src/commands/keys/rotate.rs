@@ -115,7 +115,7 @@ fn print_confirmation_plan(
             " - Update the Secret Store entry \"{}\" with the new private key",
             keys::secret_store_entry_name(repo_identifier, false)
         );
-        println!("   (Username field: {})", repo_identifier.to_string());
+        println!("   (Username field: {repo_identifier})");
         println!(" - Notify the team to run `a8c-secrets keys import` where needed");
         println!(" - Commit the changes under `.a8c-secrets/` (e.g. keys.pub and *.age files)");
     } else {
@@ -123,7 +123,7 @@ fn print_confirmation_plan(
             " - Update the Secret Store entry \"{}\" with the new private key",
             keys::secret_store_entry_name(repo_identifier, true)
         );
-        println!("   (Username field: {})", repo_identifier.to_string());
+        println!("   (Username field: {repo_identifier})");
         println!(
             " - Update CI secrets for this repo (e.g. Buildkite `A8C_SECRETS_IDENTITY`, or anywhere the old private key was configured) with the new private key"
         );

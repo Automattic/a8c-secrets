@@ -129,7 +129,7 @@ KEY MANAGEMENT
     Key rotation (employee offboarding):
         Treat age keys and provider/API secrets separately. `keys rotate` requires every file to
         show in sync in `status` first, then re-encrypts each .age from matching plaintext under
-        ~/.a8c-secrets/ so repo ciphertext matches your local secrets.
+        ~/.a8c-secrets/<host>/<org>/<name>/ so repo ciphertext matches your local secrets.
 
         Recommended order:
         1. Revoke or disable old credentials at each provider when your runbook allows.

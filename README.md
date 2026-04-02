@@ -126,7 +126,7 @@ It refuses to run until **`a8c-secrets status` shows every secret as “in sync�
 ### Recommended order
 
 1. **Revoke or disable old credentials** at each provider as soon as your runbook allows (so stolen keys stop working at the API).
-2. **Run `a8c-secrets keys rotate`** — interactive: pick the recipient, confirm; the tool prints the new private key and re-encrypts `.age` files from your in-sync plaintext under `~/.a8c-secrets/`.
+2. **Run `a8c-secrets keys rotate`** — interactive: pick the recipient, confirm; the tool prints the new private key and re-encrypts `.age` files from your in-sync plaintext under `~/.a8c-secrets/<host>/<org>/<name>/`.
 3. **Update Secret Store / CI** (or equivalent) with the new private key; notify the team to `keys import` when the dev key changed.
 4. **Issue new provider credentials if needed**, update the decrypted secret files, then **`a8c-secrets encrypt`** — usually **`--force`** right after a key rotation. Commit `keys.pub` and `.age` changes (and any follow-up commits for new secret content).
 

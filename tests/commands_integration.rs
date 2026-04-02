@@ -1130,8 +1130,8 @@ fn status_shows_sync_modified_encrypted_only_and_decrypted_only() {
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     assert_status_output_line(&stdout, "in_sync.txt", "📝✅🔏");
     assert_status_output_line(&stdout, "mod.txt", "📝❌🔏");
-    assert_status_output_line(&stdout, "only_age.txt", "    ❌🔏");
-    assert_status_output_line(&stdout, "only_local.txt", "📝❌    ");
+    assert_status_output_line(&stdout, "only_age.txt", "   ❌🔏");
+    assert_status_output_line(&stdout, "only_local.txt", "📝❌   ");
     assert!(
         stdout.contains("Legend:"),
         "expected legend after file list: {stdout}"

@@ -3,7 +3,7 @@ use anyhow::Result;
 use crate::crypto::CryptoEngine;
 use crate::fs_helpers;
 use crate::keys;
-use crate::models::{SECRET_FILE_STATUS_LEGEND, secret_file_statuses};
+use crate::models::{secret_file_status_legend, secret_file_statuses};
 
 /// Expected number of `age` recipient lines in `keys.pub` (dev + CI).
 const EXPECTED_PUBLIC_KEYS: usize = 2;
@@ -77,7 +77,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
         println!("  {status}  {name}");
     }
     println!();
-    println!("{SECRET_FILE_STATUS_LEGEND}");
+    print!("{}", secret_file_status_legend());
 
     Ok(())
 }

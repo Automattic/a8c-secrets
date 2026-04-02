@@ -10,19 +10,37 @@ use zeroize::Zeroizing;
 use crate::crypto::{CryptoEngine, PrivateKey};
 use crate::fs_helpers::{self, REPO_SECRETS_DIR, RepoIdentifier, SecretFileName};
 
-/// Printed after the file list by [`crate::commands::status::run`]; documents [`SecretFileStatus`] display values.
-pub(crate) const SECRET_FILE_STATUS_LEGEND: &str = "\
-Legend:
-  📝 decrypted file under ~/.a8c-secrets/… · 🔏 .age encrypted file in repo · ✅ match · ❌ missing or mismatch · ❓ cannot compare
+/// Variants shown in [`secret_file_status_legend`] (one row per distinct [`Display`] marker).
+///
+/// `CannotCompareNoPrivateKey` shares the same marker as [`SecretFileStatus::CannotDecryptToCompare`],
+/// so it is omitted here. If you add an enum variant, update this list and [`SecretFileStatus::description`].
+const LEGEND_VARIANTS: [SecretFileStatus; 5] = [
+    SecretFileStatus::FilesInSync,
+    SecretFileStatus::DecryptedFileOnly,
+    SecretFileStatus::EncryptedFileOnly,
+    SecretFileStatus::FilesDiffer,
+    SecretFileStatus::CannotDecryptToCompare,
+];
 
-  📝✅🔏  in sync (plaintext matches .age)
-  📝❌    decrypted only — run encrypt to generate .age encrypted file
-    ❌🔏  encrypted only — run decrypt to get missing decrypted file
-  📝❌🔏  plaintext differs from .age — run encrypt or decrypt (depending on which one is out of sync)
-  📝❓🔏  cannot compare (bad key, corrupt .age, or no private key — see Private key line above)";
+/// Text printed after the file list by [`crate::commands::status::run`].
+///
+/// Example rows use each variant’s [`Display`] output and [`SecretFileStatus::description`], so the
+/// legend cannot drift from row markers or copy.
+#[must_use]
+pub(crate) fn secret_file_status_legend() -> String {
+    use std::fmt::Write;
+
+    let key_line = "Legend:\n  📝 decrypted file under ~/.a8c-secrets/… · 🔏 .age encrypted file in repo · ✅ match · ❌ missing or mismatch · ❓ cannot compare\n\n";
+
+    let mut out = String::from(key_line);
+    for status in LEGEND_VARIANTS {
+        writeln!(&mut out, "  {status}  {}", status.description()).unwrap();
+    }
+    out
+}
 
 /// Sync state of one secret file versus its encrypted counterpart in the repo.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SecretFileStatus {
     /// Decrypting `.age` with the private key matches the local plaintext file.
     FilesInSync,
@@ -41,8 +59,26 @@ pub(crate) enum SecretFileStatus {
 impl SecretFileStatus {
     /// Returns `true` if this file may proceed past preflight checks for `keys rotate`.
     #[must_use]
-    pub(crate) fn is_in_sync(&self) -> bool {
+    pub(crate) fn is_in_sync(self) -> bool {
         matches!(self, Self::FilesInSync)
+    }
+
+    /// Human-readable explanation for [`secret_file_status_legend`] and docs (not the emoji column).
+    #[must_use]
+    pub(crate) fn description(self) -> &'static str {
+        match self {
+            Self::FilesInSync => "in sync (plaintext matches .age)",
+            Self::DecryptedFileOnly => {
+                "decrypted only — run encrypt to generate .age encrypted file"
+            }
+            Self::EncryptedFileOnly => "encrypted only — run decrypt to get missing decrypted file",
+            Self::FilesDiffer => {
+                "plaintext differs from .age — run encrypt or decrypt (depending on which one is out of sync)"
+            }
+            Self::CannotDecryptToCompare | Self::CannotCompareNoPrivateKey => {
+                "cannot compare (bad key, corrupt .age, or no private key — see Private key line above)"
+            }
+        }
     }
 }
 

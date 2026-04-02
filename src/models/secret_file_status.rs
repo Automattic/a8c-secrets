@@ -11,9 +11,6 @@ use crate::crypto::{CryptoEngine, PrivateKey};
 use crate::fs_helpers::{self, REPO_SECRETS_DIR, RepoIdentifier, SecretFileName};
 
 /// Variants shown in [`secret_file_status_legend`] (one row per distinct [`Display`] marker).
-///
-/// `CannotCompareNoPrivateKey` shares the same marker as [`SecretFileStatus::CannotDecryptToCompare`],
-/// so it is omitted here. If you add an enum variant, update this list and [`SecretFileStatus::description`].
 const LEGEND_VARIANTS: [SecretFileStatus; 5] = [
     SecretFileStatus::FilesInSync,
     SecretFileStatus::DecryptedFileOnly,
@@ -50,10 +47,9 @@ pub(crate) enum SecretFileStatus {
     DecryptedFileOnly,
     /// `.age` exists in the repo but there is no matching plaintext file.
     EncryptedFileOnly,
-    /// `.age` could not be decrypted with the given key (wrong key, corrupt file, etc.).
+    /// Could not compare `.age` to local plaintext: decrypt failed (wrong key, corrupt file, etc.)
+    /// or no private key was provided while both files exist.
     CannotDecryptToCompare,
-    /// Both sides exist but no private key was provided to compare.
-    CannotCompareNoPrivateKey,
 }
 
 impl SecretFileStatus {
@@ -75,7 +71,7 @@ impl SecretFileStatus {
             Self::FilesDiffer => {
                 "plaintext differs from .age — run encrypt or decrypt (depending on which one is out of sync)"
             }
-            Self::CannotDecryptToCompare | Self::CannotCompareNoPrivateKey => {
+            Self::CannotDecryptToCompare => {
                 "cannot compare (bad key, corrupt .age, or no private key — see Private key line above)"
             }
         }
@@ -89,7 +85,7 @@ impl fmt::Display for SecretFileStatus {
             Self::DecryptedFileOnly => "📝❌   ",
             Self::EncryptedFileOnly => "   ❌🔏",
             Self::FilesDiffer => "📝❌🔏",
-            Self::CannotDecryptToCompare | Self::CannotCompareNoPrivateKey => "📝❓🔏",
+            Self::CannotDecryptToCompare => "📝❓🔏",
         };
         f.write_str(s)
     }
@@ -137,7 +133,7 @@ pub(crate) fn secret_file_statuses(
                         Err(_) => SecretFileStatus::CannotDecryptToCompare,
                     }
                 }
-                None => SecretFileStatus::CannotCompareNoPrivateKey,
+                None => SecretFileStatus::CannotDecryptToCompare,
             },
             (false, true) => SecretFileStatus::DecryptedFileOnly,
             (true, false) => SecretFileStatus::EncryptedFileOnly,
@@ -310,7 +306,7 @@ mod tests {
 
     #[test]
     #[serial(a8c_secrets_home)]
-    fn secret_file_statuses_cannot_compare_without_private_key() {
+    fn secret_file_statuses_no_private_key_is_cannot_decrypt_to_compare() {
         let temp = tempfile::tempdir().unwrap();
         let home_dir = temp.path().join("home");
         fs::create_dir_all(&home_dir).unwrap();
@@ -340,7 +336,7 @@ mod tests {
                 assert_eq!(rows.len(), 1);
                 assert_eq!(
                     find_status(&rows, "both.txt"),
-                    SecretFileStatus::CannotCompareNoPrivateKey
+                    SecretFileStatus::CannotDecryptToCompare
                 );
             },
         );

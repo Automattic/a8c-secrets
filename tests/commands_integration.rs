@@ -571,11 +571,11 @@ fn status_succeeds_for_configured_repo() {
         "unexpected stdout: {stdout}"
     );
     assert!(
-        stdout.contains("Public keys: 2 found (2 expected)"),
+        stdout.contains("Public keys    : 2 found (2 expected)"),
         "unexpected stdout: {stdout}"
     );
     assert!(
-        stdout.contains("Private key:") && stdout.contains("matches a key in keys.pub"),
+        stdout.contains("Private key    : configured (matches a key in keys.pub)"),
         "unexpected stdout: {stdout}"
     );
     assert!(stdout.contains("a.txt"), "unexpected stdout: {stdout}");
@@ -642,11 +642,13 @@ fn status_succeeds_when_keys_pub_missing_but_shows_error_lines() {
 
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     assert!(
-        stdout.contains("Public keys: error:"),
+        stdout.contains("Public keys    : error:"),
         "expected keys.pub error on stdout: {stdout}"
     );
     assert!(
-        stdout.contains("Private key:") && stdout.contains("cannot compare to keys.pub"),
+        stdout.contains(
+            "Private key    : configured (cannot compare to keys.pub — see Public keys line above)"
+        ),
         "unexpected stdout: {stdout}"
     );
 }

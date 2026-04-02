@@ -248,7 +248,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
             "All secret files must be in sync before rotating keys (same checks as `a8c-secrets status`)."
         );
         println!(
-            "Run `a8c-secrets status` for the per-file view and legend, then use `decrypt` / `encrypt` (or remove stray files) until every line shows 📝✅🔏, and retry."
+            "Run `a8c-secrets status` for the per-file view (see `a8c-secrets status --help` for the emoji legend), then use `decrypt` / `encrypt` (or remove stray files) until every line shows 📝✅🔏, and retry."
         );
         anyhow::bail!("secret files are not all in sync; see `a8c-secrets status` and retry");
     }

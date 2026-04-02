@@ -10,32 +10,6 @@ use zeroize::Zeroizing;
 use crate::config::{self, REPO_SECRETS_DIR, RepoIdentifier, SecretFileName};
 use crate::crypto::{CryptoEngine, PrivateKey};
 
-/// Variants shown in [`secret_file_status_legend`] (one row per distinct `Display` marker).
-const LEGEND_VARIANTS: [SecretFileStatus; 5] = [
-    SecretFileStatus::FilesInSync,
-    SecretFileStatus::DecryptedFileOnly,
-    SecretFileStatus::EncryptedFileOnly,
-    SecretFileStatus::FilesDiffer,
-    SecretFileStatus::CannotDecryptToCompare,
-];
-
-/// Text printed after the file list by [`crate::commands::status::run`].
-///
-/// Example rows use each variant’s `Display` output and [`SecretFileStatus::description`], so the
-/// legend cannot drift from row markers or copy.
-#[must_use]
-pub(crate) fn secret_file_status_legend() -> String {
-    use std::fmt::Write;
-
-    let key_line = "Legend:\n  📝 decrypted file under ~/.a8c-secrets/… · 🔏 .age encrypted file in repo · ✅ match · ❌ missing or mismatch · ❓ cannot compare\n\n";
-
-    let mut out = String::from(key_line);
-    for status in LEGEND_VARIANTS {
-        writeln!(&mut out, "  {status}  {}", status.description()).unwrap();
-    }
-    out
-}
-
 /// Sync state of one secret file versus its encrypted counterpart in the repo.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SecretFileStatus {
@@ -58,32 +32,14 @@ impl SecretFileStatus {
     pub(crate) fn is_in_sync(self) -> bool {
         matches!(self, Self::FilesInSync)
     }
-
-    /// Human-readable explanation for [`secret_file_status_legend`] and docs (not the emoji column).
-    #[must_use]
-    pub(crate) fn description(self) -> &'static str {
-        match self {
-            Self::FilesInSync => "in sync (plaintext matches .age)",
-            Self::DecryptedFileOnly => {
-                "decrypted only — run encrypt to generate .age encrypted file"
-            }
-            Self::EncryptedFileOnly => "encrypted only — run decrypt to get missing decrypted file",
-            Self::FilesDiffer => {
-                "plaintext differs from .age — run encrypt or decrypt (depending on which one is out of sync)"
-            }
-            Self::CannotDecryptToCompare => {
-                "cannot compare (bad key, corrupt .age, or no private key — see Private key line above)"
-            }
-        }
-    }
 }
 
 impl fmt::Display for SecretFileStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
             Self::FilesInSync => "📝✅🔏",
-            Self::DecryptedFileOnly => "📝❌   ",
-            Self::EncryptedFileOnly => "   ❌🔏",
+            Self::DecryptedFileOnly => "📝❌  ",
+            Self::EncryptedFileOnly => "  ❌🔏",
             Self::FilesDiffer => "📝❌🔏",
             Self::CannotDecryptToCompare => "📝❓🔏",
         };
@@ -154,9 +110,7 @@ mod tests {
 
     use serial_test::serial;
 
-    use super::{
-        LEGEND_VARIANTS, SecretFileStatus, secret_file_status_legend, secret_file_statuses,
-    };
+    use super::{SecretFileStatus, secret_file_statuses};
     use crate::config::{self, REPO_SECRETS_DIR, SecretFileName};
     use crate::crypto::{AgeCrateEngine, PrivateKey, PublicKey};
 
@@ -182,13 +136,18 @@ mod tests {
     }
 
     #[test]
-    fn legend_rows_use_display_and_description_per_variant() {
-        let legend = secret_file_status_legend();
-        for status in LEGEND_VARIANTS {
-            let row = format!("  {}  {}", status, status.description());
+    fn status_long_about_includes_each_secret_file_status_display() {
+        for status in [
+            SecretFileStatus::FilesInSync,
+            SecretFileStatus::DecryptedFileOnly,
+            SecretFileStatus::EncryptedFileOnly,
+            SecretFileStatus::FilesDiffer,
+            SecretFileStatus::CannotDecryptToCompare,
+        ] {
+            let marker = status.to_string();
             assert!(
-                legend.contains(&row),
-                "legend missing row for {status:?}:\n{legend}"
+                crate::cli::STATUS_LONG_ABOUT.contains(marker.as_str()),
+                "STATUS_LONG_ABOUT missing Display output for {status:?}: {marker:?}"
             );
         }
     }

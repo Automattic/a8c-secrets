@@ -27,6 +27,22 @@ pub struct Cli {
     pub command: Command,
 }
 
+/// `status` subcommand long help (emoji column must match [`SecretFileStatus`](crate::models::SecretFileStatus) `Display`; unit tests assert that).
+pub(crate) const STATUS_LONG_ABOUT: &str = concat!(
+    "Show the sync status of all secret files.\n\n",
+    "Displays the repo identifier from .a8c-secrets/repo-id, how many public keys were read from ",
+    "keys.pub (2 expected), private key status, then each file as a compact emoji triplet ",
+    "(📝 plaintext · 🔏 .age · ✅/❌/❓).\n\n",
+    "Example in-sync row: 📝✅🔏  config.json\n\n",
+    "Legend:\n",
+    "  📝 decrypted file under ~/.a8c-secrets/… · 🔏 .age encrypted file in repo · ✅ match · ❌ missing or mismatch · ❓ cannot compare\n\n",
+    "  📝✅🔏  in sync (plaintext matches .age)\n",
+    "  📝❌    decrypted only — run encrypt to generate .age encrypted file\n",
+    "    ❌🔏  encrypted only — run decrypt to get missing decrypted file\n",
+    "  📝❌🔏  plaintext differs from .age — run encrypt or decrypt (depending on which one is out of sync)\n",
+    "  📝❓🔏  cannot compare (bad key, corrupt .age, or no private key — see Private key line above)\n",
+);
+
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// Decrypt all secret files into `~/.a8c-secrets/<repo-id>/`
@@ -120,12 +136,7 @@ EXAMPLES:
     Rm(RmArgs),
 
     /// Show sync status of all secret files
-    #[command(long_about = "\
-Show the sync status of all secret files.
-
-Displays the repo identifier from .a8c-secrets/repo-id, how many public keys were read from keys.pub (2 expected),
-private key status, each file as a compact emoji triplet (📝 plaintext · 🔏 .age · ✅/❌/❓),
-and a legend explaining the rows. Example in-sync row: 📝✅🔏  config.json")]
+    #[command(long_about = STATUS_LONG_ABOUT)]
     Status,
 
     /// Print path to decrypted secrets directory or a specific decrypted file
@@ -232,7 +243,7 @@ Rotate one recipient in keys.pub: pick which public key to replace from an
 interactive list, confirm with y/N, then generate a new key pair, update keys.pub in place
 (preserving comments), and re-encrypt each .age file under .a8c-secrets/ using the matching
 plaintext under ~/.a8c-secrets/<repo-id>/ (every file must already be in sync, i.e.
-show the 📝✅🔏 status in `a8c-secrets status`).
+show the 📝✅🔏 status in `a8c-secrets status`; run `a8c-secrets status --help` for the emoji legend).
 
 Requires a local private key that matches at least one line in keys.pub.
 After rotation, prints the new private key and next steps (Secret Store /

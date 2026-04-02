@@ -77,7 +77,7 @@ fn local_key_path(home_dir: &Path, repo_name: &str) -> PathBuf {
         .join(format!("{}.key", repo_identifier(repo_name)))
 }
 
-/// `status` prints the same emoji triplets in the legend as on file rows; tests must match a
+/// `status` file rows use the same emoji triplets as documented in `status --help`; tests match a
 /// single line that includes both the secret filename and the expected marker.
 fn assert_status_output_line(stdout: &str, filename: &str, status_contains: &str) {
     let found = stdout
@@ -1215,11 +1215,25 @@ fn status_shows_sync_modified_encrypted_only_and_decrypted_only() {
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     assert_status_output_line(&stdout, "in_sync.txt", "📝✅🔏");
     assert_status_output_line(&stdout, "mod.txt", "📝❌🔏");
-    assert_status_output_line(&stdout, "only_age.txt", "   ❌🔏");
-    assert_status_output_line(&stdout, "only_local.txt", "📝❌   ");
+    assert_status_output_line(&stdout, "only_age.txt", "  ❌🔏");
+    assert_status_output_line(&stdout, "only_local.txt", "📝❌  ");
+    assert!(
+        !stdout.contains("Legend:"),
+        "status stdout should not include the legend (see `status --help`): {stdout}"
+    );
+}
+
+#[test]
+fn status_help_includes_legend() {
+    let assert = Command::cargo_bin("a8c-secrets")
+        .unwrap()
+        .args(["status", "--help"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     assert!(
         stdout.contains("Legend:"),
-        "expected legend after file list: {stdout}"
+        "expected status --help to include legend: {stdout}"
     );
 }
 

@@ -5,10 +5,8 @@
 
 use age::secrecy::ExposeSecret;
 use anyhow::{Context, Result};
-use inquire::Password;
-use std::io::{self, BufRead, IsTerminal, Write};
+use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 use zeroize::Zeroizing;
 
 use crate::crypto::{PrivateKey, PublicKey};
@@ -29,14 +27,23 @@ pub fn secret_store_entry_name(repo_identifier: &RepoIdentifier, for_ci: bool) -
 
 /// Print a titled private key block to stdout.
 ///
+/// If stdout is not a terminal (e.g. redirected to a file), the key material is not
+/// written; a redacted placeholder line is printed instead so secrets are not leaked.
+/// Callers that require the user to see the key should exit early when
+/// `stdout.is_terminal()` is false (see `setup init` and `keys rotate`).
+///
 /// # Errors
 ///
 /// Returns an error if writing to stdout fails.
 pub fn print_private_key_to_stdout(title: &str, key: &PrivateKey) -> Result<()> {
-    let key_text = Zeroizing::new(format!("{}\n", key.to_string().expose_secret()));
     let mut out = std::io::stdout().lock();
     writeln!(out, "=== {title} ===")?;
-    out.write_all(key_text.as_bytes())?;
+    if std::io::stdout().is_terminal() {
+        let key_text = Zeroizing::new(format!("{}\n", key.to_string().expose_secret()));
+        out.write_all(key_text.as_bytes())?;
+    } else {
+        writeln!(out, "**** (redacted — stdout is not a terminal)")?;
+    }
     writeln!(out)?;
     Ok(())
 }
@@ -148,57 +155,6 @@ pub fn save_private_key(
     })?;
 
     Ok(key_path)
-}
-
-/// Prompt the user to import a private key from Secret Store.
-///
-/// Prints guidance, reads the key without terminal echo, writes it securely,
-/// and reports whether the key was newly saved or updated.
-///
-/// When stdin is not a terminal (e.g. piped input in CI), reads a line from
-/// stdin instead of using hidden terminal input.
-///
-/// # Errors
-///
-/// Returns an error if terminal input fails, key validation fails, or key
-/// persistence fails.
-pub fn prompt_and_import_private_key(repo_identifier: &RepoIdentifier) -> Result<PrivateKey> {
-    println!("Import private key for '{repo_identifier}'");
-    println!();
-    println!("Get the dev private key from Secret Store:");
-    println!(
-        "  {}  (look for: {})",
-        SECRET_STORE_BASE_URL,
-        secret_store_entry_name(repo_identifier, false)
-    );
-    println!();
-
-    let raw = if io::stdin().is_terminal() && io::stdout().is_terminal() {
-        Zeroizing::new(
-            Password::new("Paste private key:")
-                .prompt()
-                .map_err(|e| anyhow::anyhow!(e))?,
-        )
-    } else {
-        let mut line = Zeroizing::new(String::new());
-        io::stdin().lock().read_line(&mut line)?;
-        line
-    };
-    let key = PrivateKey::from_str(raw.trim())
-        .map_err(|e| anyhow::anyhow!("Invalid private key: {e}"))?;
-
-    let key_path = private_key_path(repo_identifier)?;
-    let existed = key_path.exists();
-    let saved_path = save_private_key(repo_identifier, &key)?;
-
-    if existed {
-        println!("Updated {}", saved_path.display());
-    } else {
-        println!("Saved to {}", saved_path.display());
-    }
-    println!();
-
-    Ok(key)
 }
 
 /// Read public keys from `.a8c-secrets/keys.pub`.

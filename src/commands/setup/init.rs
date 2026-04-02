@@ -14,9 +14,10 @@ use crate::permissions;
 /// Returns an error if initialization paths cannot be created, repo identifier detection
 /// fails, key generation fails, or key files cannot be written.
 pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
-    if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
+    if !io::stdout().is_terminal() {
         anyhow::bail!(
-            "`a8c-secrets setup init` must run in an interactive terminal (TTY) because it prints private keys to stdout."
+            "`a8c-secrets setup init` must not redirect stdout — it prints private keys. \
+             Run it in a terminal so keys appear on screen (do not pipe or capture stdout)."
         );
     }
 

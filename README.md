@@ -36,8 +36,8 @@ a8c-secrets setup init
 
 ```sh
 cd my-repo
+a8c-secrets keys import   # Paste the dev private key from Secret Store when prompted
 a8c-secrets decrypt
-# Paste the dev private key from Secret Store when prompted
 ```
 
 **Daily workflow:**
@@ -72,25 +72,48 @@ In the repo (committed):              On the developer's machine (never in git):
 
 ## Design decisions
 
-**Why Rust?** Cross-platform binaries (macOS, Linux, Windows) from a single codebase. Existing Buildkite pipeline and team familiarity from the [`git-conceal`](https://github.com/Automattic/git-conceal) project.
+### Why Rust?
+Cross-platform binaries (macOS, Linux, Windows) from a single codebase. Existing Buildkite pipeline and team familiarity from the [`git-conceal`](https://github.com/Automattic/git-conceal) project.
 
-**Why `age` as a library, not a CLI subprocess?** Using the [`age` crate](https://docs.rs/age/latest/age/) eliminates the external dependency — users don't need to install `age` separately, and there's no PATH injection risk. The crate implements the same [`age-encryption.org/v1`](https://age-encryption.org/v1) spec as the [Go reference implementation](https://github.com/FiloSottile/age). A trait-based abstraction (`CryptoEngine`) allows swapping to a subprocess engine if ever needed.
+### Why `age` as a library, not a CLI subprocess?
+Using the [`age` crate](https://docs.rs/age/latest/age/) eliminates the external dependency — users don't need to install `age` separately, and there's no PATH injection risk. The crate implements the same [`age-encryption.org/v1`](https://age-encryption.org/v1) spec as the [Go reference implementation](https://github.com/FiloSottile/age). A trait-based abstraction (`CryptoEngine`) allows swapping to a subprocess engine if ever needed.
 
-**Why decrypt outside the working tree?** Decrypted secrets in `~/.a8c-secrets/<host>/<org>/<name>/` can never be accidentally committed (even a `.gitignore` typo can't expose them) and are invisible to AI agents restricted to the repo working copy.
+### Why decrypt outside the working tree?
+Decrypted secrets in `~/.a8c-secrets/<host>/<org>/<name>/` can never be accidentally committed (even a `.gitignore` typo can't expose them) and are invisible to AI agents restricted to the repo working copy.
 
-**Two key pairs per repo (dev + CI).** The dev private key is shared by all developers via Secret Store. The CI private key is injected as a Buildkite secret via `A8C_SECRETS_IDENTITY`. Which key is yours is determined by public key derivation (matching your private key against `keys.pub`). Lines starting with `#` in `keys.pub` are comments and are ignored when reading recipients (same as age); they are optional for humans only.
+### Two key pairs per repo (dev + CI)
+The dev private key is shared by all developers via Secret Store. The CI private key is injected as a Buildkite secret via `A8C_SECRETS_IDENTITY`. Which key is yours is determined by public key derivation (matching your private key against `keys.pub`). Lines starting with `#` in `keys.pub` are comments and are ignored when reading recipients (same as age); they are optional for humans only.
 
-**Secret Store entry names** (human-created; replace `<host>/<org>/<name>` with your repo identifier): dev private key → `a8c-secrets dev private key for <host>/<org>/<name>`; CI private key → `a8c-secrets CI private key for <host>/<org>/<name>`.
+### Secret Store entry names
+Those are human-created. Replace `<host>/<org>/<name>` with your repo identifier:
+ - dev private key → `a8c-secrets dev private key for <host>/<org>/<name>`
+ - CI private key → `a8c-secrets CI private key for <host>/<org>/<name>`.
 
-**Smart encryption.** Since `age` uses random nonces, encrypting identical content twice produces different ciphertext. The `encrypt` command decrypts existing `.age` files in memory and compares byte-for-byte with decrypted plaintext, only re-encrypting when content actually changed. This prevents noisy git diffs. Use `--force` after key rotation.
+### Smart encryption
+Since `age` uses random nonces, encrypting identical content twice produces different ciphertext. The `encrypt` command decrypts existing `.age` files in memory and compares byte-for-byte with decrypted plaintext, only re-encrypting when content actually changed. This prevents noisy git diffs.
+Use `--force` after key rotation to bypass the smart comparison and re-encrypt files unconditionally.
 
-**Flat file structure.** No subdirectories inside `.a8c-secrets/`. Name collisions (e.g. two `google-services.json` for different modules) are handled with unique flat names like `wear-google-services.json`.
+### Flat file structure
+No subdirectories inside `.a8c-secrets/`. Name collisions (e.g. two `google-services.json` for different modules) are handled with unique flat names like `wear-google-services.json`.
 
-**Secret file names.** Each secret is a single filename (e.g. `Secrets.swift`), not a relative path. The `edit`, `encrypt <file …>`, and `rm` commands reject names that contain path separators, `..`, or other non-flat syntax so outputs stay under `.a8c-secrets/` and `~/.a8c-secrets/<host>/<org>/<name>/`.
+### Secret file names
+Each secret is a single filename (e.g. `Secrets.swift`), not a relative path. The `edit`, `encrypt <file …>`, and `rm` commands reject names that contain path separators, `..`, or other non-flat syntax so outputs stay under `.a8c-secrets/` and `~/.a8c-secrets/<host>/<org>/<name>/`.
 
-**Memory hygiene.** Decrypted file contents are held in [`zeroize`](https://docs.rs/zeroize/) buffers where practical so they are cleared when dropped. In-memory private keys are represented as [`age::x25519::Identity`](https://docs.rs/age/latest/age/x25519/struct.Identity.html), which wraps secret material with age’s own zeroizing discipline.
+### Memory hygiene
+Decrypted file contents are held in [`zeroize`](https://docs.rs/zeroize/) buffers where practical so they are cleared when dropped. In-memory private keys are represented as [`age::x25519::Identity`](https://docs.rs/age/latest/age/x25519/struct.Identity.html), which wraps secret material with age’s own zeroizing discipline.
 
-**Decrypt and orphan plaintext.** If a file still exists under `~/.a8c-secrets/<host>/<org>/<name>/` but its `.age` was removed from the repository (for example the team deleted a secret from git), `decrypt` reports these as orphans. In an interactive session it asks before deleting the stale local copies. With `--non-interactive`, or when stdin is not a TTY (common in CI), those orphan files are **removed automatically** without a prompt—so CI does not hang waiting for input.
+### `decrypt` and orphan plaintext files
+If a file still exists under `~/.a8c-secrets/<host>/<org>/<name>/` but its `.age` was removed from the repository (for example the team deleted a secret from git), `decrypt` reports these as orphans.
+ - If stdin is connected to an interactive terminal and `--non-interactive` is not set: the tool will **prompt before deleting**. This is for when a developer runs the command locally, to avoid accidentally removing e.g. a plaintext secret they just added and forgot to encrypt (and commit the `.age`) first.
+ - If stdin is not an interactive terminal, or `--non-interactive` is set (typical CI): orphan files are removed automatically **without prompting**. That keeps CI from blocking on a prompt; those environments also typically should not keep extra unencrypted plaintext around.
+
+Use `decrypt --non-interactive` in CI with `A8C_SECRETS_IDENTITY` (or a key file on the agent).
+
+### Terminals, prompts, and private keys on stdout
+- **`setup init`** and **`keys rotate`** require **stdout** connected to a terminal so new private keys are not accidentally written to a file or pipe. `keys rotate` also needs **stdin** for its menus and confirmations.
+- **`setup nuke`** requires **stdout** and **stdin** connected to a terminal (you must see the destructive summary before confirming). **`rm`** (without `--non-interactive`) requires **stdin** for confirmation prompts.
+- **`decrypt`** orphan handling uses **stdin** for the orphan prompt (unless `--non-interactive` is set or stdin is not an interactive terminal — see above).
+- **`edit`** is for interactive use (`$EDITOR`, optional create prompt).
 
 ## Key rotation
 

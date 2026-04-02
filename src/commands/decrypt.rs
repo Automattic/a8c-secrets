@@ -23,15 +23,16 @@ fn compute_orphans(
 
 /// Decrypt all repository `.age` files into the local decrypted directory.
 ///
+/// Requires a private key from `A8C_SECRETS_IDENTITY` or from the local key file
+/// (saved via `keys import`). Orphan-file removal asks for confirmation only when
+/// stdin is a terminal and `--non-interactive` is not set.
+///
 /// # Errors
 ///
-/// Returns an error if repo/config discovery fails, key resolution/import fails,
+/// Returns an error if repo/config discovery fails, no private key is available,
 /// encrypted files cannot be read, any ciphertext cannot be decrypted, output files
 /// cannot be written, or orphan cleanup fails.
 pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
-    let interactive =
-        !args.non_interactive && io::stdin().is_terminal() && io::stdout().is_terminal();
-
     let repo_root = fs_helpers::find_repo_root()?;
     let age_files: BTreeSet<SecretFileName> = fs_helpers::list_age_files(&repo_root)?
         .into_iter()
@@ -43,15 +44,11 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
     }
     let repo_identifier = fs_helpers::RepoIdentifier::auto_detect()?;
 
-    // Get or prompt for private key
-    let private_key = match keys::get_private_key(&repo_identifier) {
-        Ok(key) => key,
-        Err(_) if interactive => {
-            println!("No private key found for '{repo_identifier}'.");
-            keys::prompt_and_import_private_key(&repo_identifier)?
-        }
-        Err(e) => return Err(e),
-    };
+    let private_key = keys::get_private_key(&repo_identifier).with_context(|| {
+        format!(
+            "Failed to obtain private key for '{repo_identifier}'. If you haven't configured one yet, run `a8c-secrets keys import` with the dev key from Secret Store, or set A8C_SECRETS_IDENTITY (for example in CI)."
+        )
+    })?;
 
     // Ensure output directory exists with correct permissions
     let out_dir = fs_helpers::decrypted_dir(&repo_identifier)?;
@@ -91,7 +88,11 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
     );
 
     // Orphan detection: decrypted files with no corresponding .age
-    handle_orphans(&repo_identifier, &age_files, interactive)?;
+    handle_orphans(
+        &repo_identifier,
+        &age_files,
+        !args.non_interactive && io::stdin().is_terminal(),
+    )?;
 
     if decrypt_failures > 0 {
         anyhow::bail!(
@@ -107,7 +108,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
 fn handle_orphans(
     repo_identifier: &fs_helpers::RepoIdentifier,
     age_files: &BTreeSet<SecretFileName>,
-    interactive: bool,
+    prompt_before_removing: bool,
 ) -> Result<()> {
     let decrypted_files = fs_helpers::list_decrypted_files(repo_identifier)?;
     let orphans = compute_orphans(&decrypted_files, age_files);
@@ -122,13 +123,13 @@ fn handle_orphans(
         println!("  {name}");
     }
 
-    let should_remove = if interactive {
+    let should_remove = if prompt_before_removing {
         Confirm::new("Remove orphan files?")
             .with_default(false)
             .prompt()
             .map_err(|e| anyhow::anyhow!(e))?
     } else {
-        println!("Non-interactive mode: auto-removing orphans.");
+        println!("Removing orphan files without prompting.");
         true
     };
 

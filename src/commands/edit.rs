@@ -39,7 +39,8 @@ fn command_for_editor(editor: &str, file: &Path) -> Result<std::process::Command
 ///
 /// Returns an error if repo/config discovery fails, file IO fails, launching
 /// the editor fails, the editor exits unsuccessfully, or encryption/write
-/// operations fail.
+/// operations fail. Prompts (for example creating a new file) assume stdin is a
+/// terminal; otherwise use another editor on the decrypted file, then run `encrypt`.
 pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
     let repo_root = fs_helpers::find_repo_root()?;
     let repo_identifier = fs_helpers::RepoIdentifier::auto_detect()?;

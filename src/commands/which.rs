@@ -12,8 +12,8 @@ use crate::config;
 /// # Errors
 ///
 /// Returns an error if the repository root or `repo-id` cannot be resolved, the decrypted
-/// secrets directory cannot be determined, or (when a file is given) that path is not an
-/// existing file.
+/// secrets directory cannot be determined, or (when a file is given) that path is missing or
+/// not a regular file.
 pub fn run(args: &WhichArgs) -> Result<()> {
     let repo_root = config::find_repo_root()?;
     let repo_identifier = config::repo_identifier(&repo_root)?;
@@ -22,7 +22,11 @@ pub fn run(args: &WhichArgs) -> Result<()> {
         None => println!("{}", decrypted_dir.display()),
         Some(name) => {
             let path = decrypted_dir.join(name.as_str());
-            if !path.is_file() {
+            if path.is_file() {
+                println!("{}", path.display());
+            } else if path.exists() {
+                anyhow::bail!("decrypted path is not a regular file: {}", path.display());
+            } else {
                 anyhow::bail!(
                     "decrypted file does not exist: {}\n\
                      Hint: run `a8c-secrets decrypt {}` or create the file there first.",
@@ -30,7 +34,6 @@ pub fn run(args: &WhichArgs) -> Result<()> {
                     name.as_str()
                 );
             }
-            println!("{}", path.display());
         }
     }
     Ok(())

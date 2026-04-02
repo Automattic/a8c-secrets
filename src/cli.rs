@@ -123,7 +123,7 @@ EXAMPLES:
     #[command(long_about = "\
 Show the sync status of all secret files.
 
-Displays the repo identifier, how many public keys were read from keys.pub (2 expected),
+Displays the repo identifier from .a8c-secrets/repo-id, how many public keys were read from keys.pub (2 expected),
 private key status, each file as a compact emoji triplet (📝 plaintext · 🔏 .age · ✅/❌/❓),
 and a legend explaining the rows. Example in-sync row: 📝✅🔏  config.json")]
     Status,
@@ -244,9 +244,9 @@ pub enum SetupCommand {
     #[command(long_about = "\
 Initialize a8c-secrets in the current git repository.
 
-Creates .a8c-secrets/keys.pub, generates both dev and CI key pairs, and saves
-the dev private key locally. Derives the repo identifier from git remote `origin`
-and fails if auto-detection is unavailable.
+Creates `.a8c-secrets/keys.pub` and `.a8c-secrets/repo-id`, generates both dev and CI key pairs,
+and saves the dev private key locally. The initial `host/org/repo` value comes from git remote
+`origin`; later commands read `repo-id` only (so renames or forks do not move local storage).
 
 Requires stdout connected to a terminal so private keys are shown on screen (do not
 redirect or capture stdout).")]

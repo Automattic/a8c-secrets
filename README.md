@@ -46,7 +46,7 @@ a8c-secrets decrypt
 a8c-secrets decrypt          # Get latest secrets after git pull
 a8c-secrets edit config.json # Edit a secret, auto-encrypts on save
 a8c-secrets encrypt          # Encrypt any modified files
-git add .a8c-secrets/        # Commit encrypted changes
+git add .a8c-secrets/        # Commit encrypted changes (and repo-id / keys.pub when they change)
 ```
 
 Run `a8c-secrets manual` for a comprehensive guide, or `a8c-secrets help <command>` for per-command help.
@@ -64,11 +64,13 @@ Run `a8c-secrets manual` for a comprehensive guide, or `a8c-secrets help <comman
 In the repo (committed):              On the developer's machine (never in git):
 
 .a8c-secrets/                          ~/.a8c-secrets/
-├── keys.pub            public keys    ├── keys/
-├── secret.json.age     encrypted      │   └── <host>/<org>/<name>.key  private key (0600)
-└── api-keys.yml.age    encrypted      └── <host>/<org>/<name>/         decrypted files
-                                           └── api-keys.yml
+├── repo-id             canonical id   ├── keys/
+├── keys.pub            public keys    │   └── <host>/<org>/<name>.key  private key (0600)
+├── secret.json.age     encrypted      └── <host>/<org>/<name>/         decrypted files
+└── api-keys.yml.age    encrypted          └── api-keys.yml
 ```
+
+The `repo-id` file holds one line: `host/org/repo` (lowercase). It is written by `a8c-secrets setup init` using your git `origin` URL, then committed. Daily commands read this file so local keys and decrypted paths stay stable if `origin` changes (forks, mirrors).
 
 ## Design decisions
 

@@ -16,10 +16,8 @@ use crate::keys;
 /// Returns an error if repo/config discovery fails, user input fails, or the
 /// key cannot be validated/persisted.
 pub fn run() -> Result<()> {
-    // Ensure we are inside a git repository before attempting to auto-detect
-    // the repo identifier. This provides a clear "not in a git repository"
-    // error instead of a misleading "Configure an `origin` remote" message
-    // when run outside a git checkout.
+    // Resolve repo root first so failures outside a git checkout are clear
+    // before reading `.a8c-secrets/repo-id`.
     let repo_root = config::find_repo_root()?;
     let repo_identifier = config::repo_identifier(&repo_root)?;
 

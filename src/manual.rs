@@ -23,6 +23,7 @@ FILE LAYOUT
     In the repository (committed to git):
 
         .a8c-secrets/
+        ├── repo-id                  Canonical host/org/repo (one line); written at setup init
         ├── keys.pub                 Public keys (dev + CI), one per line
         ├── google-services.json.age
         └── api-keys.yml.age
@@ -35,6 +36,15 @@ FILE LAYOUT
         └── <host>/<org>/<name>/          Decrypted secret files
             ├── google-services.json
             └── api-keys.yml
+
+REPO IDENTIFIER (repo-id)
+    The canonical host/org/repo string lives in .a8c-secrets/repo-id (one line).
+    `setup init` creates it from git `origin` and you commit it with keys.pub.
+    Other commands read repo-id only, so local keys and decrypted directories do
+    not follow a renamed or forked origin.
+
+    If there are no .age files under .a8c-secrets/, `decrypt` exits successfully
+    without reading repo-id.
 
 SECRET FILE NAMES
     Use one path segment per secret (e.g. Secrets.swift), not a relative path.
@@ -60,7 +70,7 @@ GETTING STARTED
         a8c-secrets decrypt          # Get latest secrets after git pull
         a8c-secrets edit config.json # Edit a secret, auto-encrypts on save
         a8c-secrets encrypt          # Encrypt any modified files
-        git add .a8c-secrets/        # Commit encrypted changes
+        git add .a8c-secrets/        # Commit encrypted changes (and repo-id / keys.pub when they change)
 
     decrypt never prompts for a private key; run keys import first (or set
     A8C_SECRETS_IDENTITY in CI).
@@ -153,6 +163,7 @@ ENVIRONMENT VARIABLES
         vi (Unix) or notepad (Windows).
 
 FILES
+    .a8c-secrets/repo-id           Canonical host/org/repo id (committed, one line)
     .a8c-secrets/keys.pub          Public keys (committed)
     .a8c-secrets/*.age             Encrypted secrets (committed)
     ~/.a8c-secrets/keys/<host>/<org>/<name>.key Dev private key (local, mode 0600)

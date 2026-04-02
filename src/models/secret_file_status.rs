@@ -11,7 +11,7 @@ use crate::crypto::{CryptoEngine, PrivateKey};
 use crate::fs_helpers::{self, REPO_SECRETS_DIR, RepoIdentifier, SecretFileName};
 
 /// Printed after the file list by [`crate::commands::status::run`]; documents [`SecretFileStatus`] display values.
-pub const SECRET_FILE_STATUS_LEGEND: &str = "\
+pub(crate) const SECRET_FILE_STATUS_LEGEND: &str = "\
 Legend:
   📝 decrypted file under ~/.a8c-secrets/… · 🔏 .age encrypted file in repo · ✅ match · ❌ missing or mismatch · ❓ cannot compare
 
@@ -23,7 +23,7 @@ Legend:
 
 /// Sync state of one secret file versus its encrypted counterpart in the repo.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SecretFileStatus {
+pub(crate) enum SecretFileStatus {
     /// Decrypting `.age` with the private key matches the local plaintext file.
     FilesInSync,
     /// Both exist but plaintext differs from decrypted `.age`.
@@ -41,7 +41,7 @@ pub enum SecretFileStatus {
 impl SecretFileStatus {
     /// Returns `true` if this file may proceed past preflight checks for `keys rotate`.
     #[must_use]
-    pub fn is_in_sync(&self) -> bool {
+    pub(crate) fn is_in_sync(&self) -> bool {
         matches!(self, Self::FilesInSync)
     }
 }
@@ -65,7 +65,7 @@ impl fmt::Display for SecretFileStatus {
 /// # Errors
 ///
 /// Returns an error if listing files fails or any required file cannot be read.
-pub fn secret_file_statuses(
+pub(crate) fn secret_file_statuses(
     crypto_engine: &dyn CryptoEngine,
     repo_root: &Path,
     repo_identifier: &RepoIdentifier,

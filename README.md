@@ -143,7 +143,7 @@ It refuses to run until **`a8c-secrets status` shows every secret as “in sync�
 
 ## Development
 
-Requires **Rust 1.85** or later (matches the [Rust 2024 edition](https://doc.rust-lang.org/edition-guide/rust-2024/index.html) used by this crate).
+Requires **Rust 1.88** or later. This crate uses the [Rust 2024 edition](https://doc.rust-lang.org/edition-guide/rust-2024/index.html) and [let chains](https://doc.rust-lang.org/edition-guide/rust-2024/let-chains.html) (`if … && let …`), which stabilized in 1.88.
 
 ```sh
 make help          # Show all targets

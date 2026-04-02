@@ -124,11 +124,8 @@ EXAMPLES:
 Show the sync status of all secret files.
 
 Displays the repo identifier, how many public keys were read from keys.pub (2 expected),
-private key status, and each file's sync state:
-  \u{2713}  in sync                — decrypted plaintext matches encrypted .age content
-  \u{26a0}  modified decrypted copy — plaintext differs from .age (needs encrypt)
-  \u{2739}  decrypted only          — no .age file in repo (new, needs encrypt)
-  \u{25c7}  encrypted only          — no decrypted plaintext (needs decrypt)")]
+private key status, each file as a compact emoji triplet (📝 plaintext · 🔏 .age · ✅/❌/❓),
+and a legend explaining the rows. Example in-sync row: 📝✅🔏  config.json")]
     Status,
 
     /// Key management (show, import, rotate)
@@ -210,9 +207,9 @@ key for this repo identifier.")]
         long_about = "\
 Rotate one recipient in keys.pub: pick which public key to replace from an
 interactive list, confirm with y/N, then generate a new key pair, update keys.pub in place
-(preserving comments), and re-encrypt each .age file under .a8c-secrets/
-(decrypt the existing file from disk with your current private key in memory, then encrypt to the
-updated recipient list). Does not read ~/.a8c-secrets plaintext.
+(preserving comments), and re-encrypt each .age file under .a8c-secrets/ using the matching
+plaintext under ~/.a8c-secrets/<repo-id>/ (every file must already show \"in sync\" in
+`a8c-secrets status`).
 
 Requires a local private key that matches at least one line in keys.pub.
 After rotation, prints the new private key and next steps (Secret Store /
@@ -221,7 +218,8 @@ CI secrets depending on whether you rotated the key you hold locally).
 Recommended: run this before encrypting and pushing new provider/API secrets, so new material
 is not encrypted to recipients who should no longer have the old dev key. Still revoke or
 replace credentials at each provider as your process requires — this command does not expire
-API keys. After rotation, update secret file content and run encrypt (often --force).
+API keys. After rotation, update secret file content and run encrypt (often --force) when you
+change provider material.
 
 Requires stdout connected to a terminal so the new private key is shown on screen
 (do not redirect stdout). Requires stdin connected to a terminal for interactive prompts.",

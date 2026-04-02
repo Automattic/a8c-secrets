@@ -1117,20 +1117,24 @@ fn status_shows_sync_modified_encrypted_only_and_decrypted_only() {
 
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     assert!(
-        stdout.contains("in sync") && stdout.contains("in_sync.txt"),
+        stdout.contains("📝✅🔏") && stdout.contains("in_sync.txt"),
         "expected in-sync line: {stdout}"
     );
     assert!(
-        stdout.contains("modified decrypted copy") && stdout.contains("mod.txt"),
-        "expected modified line: {stdout}"
+        stdout.contains("📝❌🔏") && stdout.contains("mod.txt"),
+        "expected files-differ line: {stdout}"
     );
     assert!(
-        stdout.contains("encrypted only") && stdout.contains("only_age.txt"),
+        stdout.contains("    ❌🔏") && stdout.contains("only_age.txt"),
         "expected encrypted-only line: {stdout}"
     );
     assert!(
-        stdout.contains("decrypted only") && stdout.contains("only_local.txt"),
+        stdout.contains("📝❌    ") && stdout.contains("only_local.txt"),
         "expected decrypted-only line: {stdout}"
+    );
+    assert!(
+        stdout.contains("Legend:"),
+        "expected legend after file list: {stdout}"
     );
 }
 

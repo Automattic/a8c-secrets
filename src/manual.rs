@@ -91,7 +91,7 @@ COMMANDS
     Key management:
         keys show                         Display key paths and keys.pub recipients
         keys import                       Import private key from Secret Store
-        keys rotate                       Rotate one keys.pub recipient (interactive), re-encrypt .age files
+        keys rotate                       Rotate one keys.pub recipient (interactive); re-encrypt .age from ~/.a8c-secrets plaintext
 
     Setup:
         setup init                        Initialize a8c-secrets in a repository
@@ -127,20 +127,19 @@ KEY MANAGEMENT
     (same as age recipient files); they are optional human notes only.
 
     Key rotation (employee offboarding):
-        Treat age keys and provider/API secrets separately. `keys rotate` only re-wraps each
-        committed .age file under .a8c-secrets/ (read from disk); it does not read
-        ~/.a8c-secrets plaintext. Run encrypt after rotation when local plaintext should
-        match git.
+        Treat age keys and provider/API secrets separately. `keys rotate` requires every file to
+        show in sync in `status` first, then re-encrypts each .age from matching plaintext under
+        ~/.a8c-secrets/ so repo ciphertext matches your local secrets.
 
         Recommended order:
         1. Revoke or disable old credentials at each provider when your runbook allows.
-        2. a8c-secrets keys rotate   # interactive; prints new private key; re-encrypts .age on disk
+        2. a8c-secrets keys rotate   # interactive; prints new private key; re-encrypts .age from plaintext tree
         3. Update Secret Store / CI with the new private key (as printed); notify team to keys import if dev key changed
         4. Rotate provider secret values, update decrypted files, then a8c-secrets encrypt (often --force); commit
         5. Team runs: a8c-secrets keys import && a8c-secrets decrypt
 
         Rotate age keys before committing new provider secrets so new material is not encrypted
-        to ex-recipients. Diffs after rotate are crypto re-wraps until you encrypt again.
+        to ex-recipients. Diffs after rotate are new ciphertext for the same local plaintext until you change secrets and encrypt again.
 
 ENVIRONMENT VARIABLES
     A8C_SECRETS_IDENTITY

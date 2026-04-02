@@ -87,7 +87,7 @@ fn print_confirmation_plan(
     );
     let decrypted_hint = decrypted_dir_display
         .as_deref()
-        .unwrap_or("~/.a8c-secrets/<repo-id>/");
+        .unwrap_or("~/.a8c-secrets/<host>/<org>/<repo>/");
     if age_files.is_empty() {
         println!(
             " - (No `.age` files under `{}` to re-encrypt)",

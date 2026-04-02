@@ -81,9 +81,9 @@ fn local_key_path(home_dir: &Path, repo_name: &str) -> PathBuf {
 /// `status` prints the same emoji triplets in the legend as on file rows; tests must match a
 /// single line that includes both the secret filename and the expected marker.
 fn assert_status_output_line(stdout: &str, filename: &str, status_contains: &str) {
-    let found = stdout.lines().any(|line| {
-        line.contains(filename) && line.contains(status_contains)
-    });
+    let found = stdout
+        .lines()
+        .any(|line| line.contains(filename) && line.contains(status_contains));
     assert!(
         found,
         "expected one stdout line containing filename {filename:?} and substring {status_contains:?};\nstdout:\n{stdout}"

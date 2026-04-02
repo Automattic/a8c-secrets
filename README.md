@@ -117,13 +117,22 @@ Use `decrypt --non-interactive` in CI with `A8C_SECRETS_IDENTITY` (or a key file
 
 ## Key rotation
 
-On employee offboarding (or when rotating CI’s key):
+On employee offboarding (or when rotating CI’s key), treat **age keys** (`keys.pub` / dev & CI identities) and **provider/API secrets** (what lives inside the encrypted files) as separate work.
 
-1. Run `a8c-secrets keys rotate` — the tool lists recipients from `keys.pub`, you choose which to rotate, confirm, and it updates `keys.pub` (preserving comments), re-encrypts each `.age` file under `.a8c-secrets/` in the repo, and prints the new private key.
-2. Follow the printed next steps (Secret Store entry for the key you rotated, CI secrets if applicable, notify the team to `keys import` when the dev key changed).
-3. Rotate the actual secret values (API keys, tokens) — this is a manual step outside the tool's scope.
-4. Commit updated `keys.pub` and `.age` files.
-5. Team runs: `a8c-secrets keys import && a8c-secrets decrypt` where needed.
+### What `keys rotate` does
+
+It refuses to run until **`a8c-secrets status` shows every secret as “in sync”** (no encrypted-only, decrypted-only, or modified local copy). Then it updates `keys.pub` and **re-encrypts each `.age` file from the matching plaintext under `~/.a8c-secrets/<host>/<org>/<name>/`**, so new ciphertext matches your local decrypted files. If anything is out of sync, fix it with `decrypt` / `encrypt` (or remove stray files) and retry.
+
+### Recommended order
+
+1. **Revoke or disable old credentials** at each provider as soon as your runbook allows (so stolen keys stop working at the API).
+2. **Run `a8c-secrets keys rotate`** — interactive: pick the recipient, confirm; the tool prints the new private key and re-encrypts `.age` files from your in-sync plaintext under `~/.a8c-secrets/<host>/<org>/<name>/`.
+3. **Update Secret Store / CI** (or equivalent) with the new private key; notify the team to `keys import` when the dev key changed.
+4. **Issue new provider credentials if needed**, update the decrypted secret files, then **`a8c-secrets encrypt`** — usually **`--force`** right after a key rotation. Commit `keys.pub` and `.age` changes (and any follow-up commits for new secret content).
+
+**Why age keys before new secrets in git:** if you `encrypt` and push **new** API material while `keys.pub` still includes a recipient who should no longer decrypt, anyone with that old dev key could decrypt that commit. Completing `keys rotate` first avoids encrypting new secrets to the old audience. Diffs right after rotation reflect **new ciphertext for the same plaintext** you had locally (age nonces differ each time), not necessarily new provider values — those show up after you change decrypted files and `encrypt` again.
+
+5. Team runs `a8c-secrets keys import && a8c-secrets decrypt` where needed.
 
 ## Environment variables
 

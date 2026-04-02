@@ -78,6 +78,18 @@ fn local_key_path(home_dir: &Path, repo_name: &str) -> PathBuf {
     path
 }
 
+/// `status` prints the same emoji triplets in the legend as on file rows; tests must match a
+/// single line that includes both the secret filename and the expected marker.
+fn assert_status_output_line(stdout: &str, filename: &str, status_contains: &str) {
+    let found = stdout
+        .lines()
+        .any(|line| line.contains(filename) && line.contains(status_contains));
+    assert!(
+        found,
+        "expected one stdout line containing filename {filename:?} and substring {status_contains:?};\nstdout:\n{stdout}"
+    );
+}
+
 fn cargo_bin_exe() -> PathBuf {
     let cmd = Command::cargo_bin("a8c-secrets").unwrap();
     PathBuf::from(cmd.get_program())
@@ -1116,21 +1128,13 @@ fn status_shows_sync_modified_encrypted_only_and_decrypted_only() {
         .success();
 
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
+    assert_status_output_line(&stdout, "in_sync.txt", "📝✅🔏");
+    assert_status_output_line(&stdout, "mod.txt", "📝❌🔏");
+    assert_status_output_line(&stdout, "only_age.txt", "   ❌🔏");
+    assert_status_output_line(&stdout, "only_local.txt", "📝❌   ");
     assert!(
-        stdout.contains("in sync") && stdout.contains("in_sync.txt"),
-        "expected in-sync line: {stdout}"
-    );
-    assert!(
-        stdout.contains("modified decrypted copy") && stdout.contains("mod.txt"),
-        "expected modified line: {stdout}"
-    );
-    assert!(
-        stdout.contains("encrypted only") && stdout.contains("only_age.txt"),
-        "expected encrypted-only line: {stdout}"
-    );
-    assert!(
-        stdout.contains("decrypted only") && stdout.contains("only_local.txt"),
-        "expected decrypted-only line: {stdout}"
+        stdout.contains("Legend:"),
+        "expected legend after file list: {stdout}"
     );
 }
 

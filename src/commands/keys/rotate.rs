@@ -3,11 +3,13 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use inquire::{Confirm, Select};
 use std::io::IsTerminal;
+use zeroize::Zeroizing;
 
 use super::{PUBLIC_KEY_LIST_LEGEND, PublicKeyListRow};
-use crate::crypto::{CryptoEngine, PrivateKey, PublicKey};
+use crate::crypto::{CryptoEngine, PublicKey};
 use crate::fs_helpers::{self, REPO_SECRETS_DIR, SecretFileName};
 use crate::keys;
+use crate::models::secret_file_statuses;
 
 fn select_public_key_to_rotate(
     public_keys: &[PublicKey],
@@ -39,11 +41,23 @@ fn confirm_rotation() -> Result<()> {
 
 fn print_rotation_reminder() {
     println!();
+    println!("Before you rotate — recommended order:");
+    println!();
     println!(
-        "Reminder: before you rotate the encryption keys used to encrypt your secret files, \
-         be sure to manually rotate the contents of those secret files first (e.g. your API keys \
-         and such that those secret files contain), so that people who had the old key and could \
-         decrypt secret files from past commits cannot use those secrets anymore."
+        "  • Run `keys rotate` (this flow) before you `encrypt` and push new provider/API secrets, \
+         so new material is not encrypted to people who still have the old dev key."
+    );
+    println!();
+    println!(
+        "  • Revoke or disable old credentials at each provider as soon as your runbook allows; \
+         rotating age keys does not expire API keys by itself."
+    );
+    println!();
+    println!(
+        "  • This command requires every secret to show \"in sync\" in `a8c-secrets status` first. \
+         It then re-encrypts each `.age` from the matching plaintext in your repo's decrypted \
+         directory under ~/.a8c-secrets/<host>/<org>/<name>/, so new ciphertext matches your \
+         local decrypted files (not stale `.age` blobs if they had drifted)."
     );
     println!();
     println!("{PUBLIC_KEY_LIST_LEGEND}");
@@ -72,6 +86,9 @@ fn print_confirmation_plan(
         " - Update `{}` to replace the chosen public key line (other lines and comments unchanged)",
         keys_pub_path.display()
     );
+    let decrypted_hint = decrypted_dir_display
+        .as_deref()
+        .unwrap_or("~/.a8c-secrets/<host>/<org>/<repo>/");
     if age_files.is_empty() {
         println!(
             " - (No `.age` files under `{}` to re-encrypt)",
@@ -79,12 +96,16 @@ fn print_confirmation_plan(
         );
     } else {
         println!(
-            " - For each `.age` file under `{}`, decrypt ciphertext in memory with your current private key, then re-encrypt to the updated recipient list and write the file back",
-            secrets_dir.display()
+            " - For each `.age` file under `{}`, read plaintext from `{}`, then encrypt to the updated recipient list and write the `.age` file back",
+            secrets_dir.display(),
+            decrypted_hint
         );
         for name in age_files {
             println!("     - {name}.age");
         }
+        println!(
+            "     (Preflight already verified each pair is \"in sync\" in `a8c-secrets status`.)"
+        );
     }
     println!(" - Print the new private key to stdout");
     println!();
@@ -116,16 +137,17 @@ fn print_confirmation_plan(
 }
 
 /// Applies key rotation after interactive confirmation: new keypair, `keys.pub` update,
-/// re-encryption of `.age` files, optional local private key file update.
+/// re-encryption of `.age` files from plaintext under `~/.a8c-secrets/`, optional local private key file update.
 ///
 /// `old_public_key` must be exactly one of the recipient lines currently in `keys.pub` (as
 /// returned by [`keys::load_public_keys`]). Recipients used for re-encryption are read from
 /// disk again after updating `keys.pub`.
 ///
-/// `private_key_for_decrypt` is the caller’s current age identity (typically from
-/// [`keys::get_private_key`]). It is used to decrypt existing `.age` files before re-encrypting
-/// them. When `old_public_key` is the public key derived from this same identity, the local
-/// key file is updated with the newly generated private key.
+/// Callers must ensure every secret file is **in sync** (see [`crate::models::secret_file_statuses`]) before
+/// calling this function; re-encryption reads decrypted plaintext from disk, not ciphertext from `.age`.
+///
+/// When `rotating_owned` is true (the rotated recipient is the one derived from the user’s
+/// current local identity), the local key file is updated with the newly generated private key.
 ///
 /// Used by [`run`] and by unit tests (inquire’s `Select`/`Confirm` prompts are not wired for
 /// non-interactive subprocess tests; see crate tests in this module).
@@ -134,11 +156,8 @@ pub(crate) fn apply_key_rotation(
     repo_root: &Path,
     repo_identifier: &fs_helpers::RepoIdentifier,
     old_public_key: &PublicKey,
-    private_key_for_decrypt: &PrivateKey,
+    rotating_owned: bool,
 ) -> Result<()> {
-    let public_key_from_decrypt_private_key = private_key_for_decrypt.to_public();
-    let rotating_owned = old_public_key == &public_key_from_decrypt_private_key;
-
     let (new_private_key, new_public_key) = crypto_engine.keygen()?;
 
     keys::replace_recipient_public_key_in_keys_pub(repo_root, old_public_key, &new_public_key)?;
@@ -146,16 +165,18 @@ pub(crate) fn apply_key_rotation(
     let recipient_public_keys_after_rotation = keys::load_public_keys(repo_root)?;
 
     let secrets_dir = repo_root.join(REPO_SECRETS_DIR);
+    let decrypted_dir = fs_helpers::decrypted_dir(repo_identifier)?;
     let age_files = fs_helpers::list_age_files(repo_root)?;
 
     for name in &age_files {
-        let age_path = secrets_dir.join(format!("{name}.age"));
-        let ciphertext = std::fs::read(&age_path)?;
-        let plaintext = crypto_engine
-            .decrypt(&ciphertext, private_key_for_decrypt)
-            .with_context(|| format!("Failed to decrypt {name} during re-encryption"))?;
+        let decrypted_path = decrypted_dir.join(name.as_str());
+        let plaintext = Zeroizing::new(
+            std::fs::read(&decrypted_path)
+                .with_context(|| format!("Failed to read decrypted file {name}"))?,
+        );
         let new_ciphertext =
             crypto_engine.encrypt(plaintext.as_slice(), &recipient_public_keys_after_rotation)?;
+        let age_path = secrets_dir.join(format!("{name}.age"));
         fs_helpers::atomic_write(&age_path, &new_ciphertext)?;
         println!("  {name} — re-encrypted");
     }
@@ -171,7 +192,12 @@ pub(crate) fn apply_key_rotation(
     println!();
     keys::print_private_key_to_stdout("New private key", &new_private_key)?;
 
-    println!("NOTE: This does not rotate the actual secret values inside the encrypted files.");
+    println!(
+        "NOTE: Each `.age` was written from plaintext under ~/.a8c-secrets/ (after a full \"in sync\" preflight); local decrypted files were not modified."
+    );
+    println!(
+        "NOTE: Rotate provider/API secrets separately as needed, then `a8c-secrets encrypt` (often `--force`) when committing new secret content."
+    );
 
     Ok(())
 }
@@ -209,6 +235,22 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
         );
     }
 
+    let sync_rows = secret_file_statuses(
+        crypto_engine,
+        &repo_root,
+        &repo_identifier,
+        Some(&private_key_for_decrypt),
+    )?;
+    if sync_rows.iter().any(|(_, s)| !s.is_in_sync()) {
+        println!(
+            "All secret files must be in sync before rotating keys (same checks as `a8c-secrets status`)."
+        );
+        println!(
+            "Run `a8c-secrets status` for the per-file view and legend, then use `decrypt` / `encrypt` (or remove stray files) until every line shows 📝✅🔏, and retry."
+        );
+        anyhow::bail!("secret files are not all in sync; see `a8c-secrets status` and retry");
+    }
+
     print_rotation_reminder();
 
     let selection =
@@ -239,7 +281,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
         &repo_root,
         &repo_identifier,
         &selection.key,
-        &private_key_for_decrypt,
+        selection.matches_local_private_key,
     )
 }
 
@@ -322,6 +364,10 @@ mod tests {
             let age_path = repo_dir.path().join(".a8c-secrets/secret.txt.age");
             fs::write(&age_path, ciphertext).unwrap();
 
+            let decrypted_dir = secrets_home.join(repo_identifier.as_path());
+            fs::create_dir_all(&decrypted_dir).unwrap();
+            fs::write(decrypted_dir.join("secret.txt"), plaintext).unwrap();
+
             let engine = AgeCrateEngine::new();
             let old_dev_public_key = old_dev_identity.to_public();
 
@@ -330,7 +376,7 @@ mod tests {
                 repo_dir.path(),
                 &repo_identifier,
                 &old_dev_public_key,
-                &old_dev_identity,
+                true,
             )
             .expect("apply_key_rotation");
 
@@ -411,6 +457,10 @@ mod tests {
             )
             .unwrap();
 
+            let decrypted_dir = secrets_home.join(repo_identifier.as_path());
+            fs::create_dir_all(&decrypted_dir).unwrap();
+            fs::write(decrypted_dir.join("secret.txt"), plaintext).unwrap();
+
             let engine = AgeCrateEngine::new();
             let old_dev_public_key = old_dev_identity.to_public();
 
@@ -419,7 +469,7 @@ mod tests {
                 repo_dir.path(),
                 &repo_identifier,
                 &old_dev_public_key,
-                &old_dev_identity,
+                true,
             )
             .unwrap();
 

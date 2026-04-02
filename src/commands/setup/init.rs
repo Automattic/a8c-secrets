@@ -81,26 +81,24 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     keys::print_private_key_to_stdout("Dev private key", &dev_private)?;
     keys::print_private_key_to_stdout("CI private key", &ci_private)?;
     println!("Next steps:");
-    println!("  1. Add the dev private key to Secret Store:");
     println!(
-        "     {}  (create entry: {})",
-        keys::SECRET_STORE_BASE_URL,
+        "  1. Add the dev private key to Secret Store ({}):",
+        keys::SECRET_STORE_BASE_URL
+    );
+    println!(
+        "        Create entry with name `{}`",
         keys::secret_store_entry_name(&repo_identifier, false)
     );
+    println!("        Set the entry Username field to: {repo_identifier}",);
     println!(
-        "        Set the entry Username field to: {}",
-        repo_identifier.to_string()
+        "  2. Add the CI private key to Secret Store ({}):",
+        keys::SECRET_STORE_BASE_URL
     );
-    println!("  2. Add the CI private key to Secret Store:");
     println!(
-        "     {}  (create entry: {})",
-        keys::SECRET_STORE_BASE_URL,
+        "        Create entry with name `{}`",
         keys::secret_store_entry_name(&repo_identifier, true)
     );
-    println!(
-        "        Set the entry Username field to: {}",
-        repo_identifier.to_string()
-    );
+    println!("        Set the entry Username field to: {repo_identifier}",);
     println!("        Under \"Authorized Users and Groups\", add: Apps Infrastructure");
     println!("  3. Add the CI private key to Buildkite secrets as A8C_SECRETS_IDENTITY");
     println!("     (coordinate with Apps Infra if needed)");

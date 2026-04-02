@@ -567,7 +567,7 @@ fn status_succeeds_for_configured_repo() {
 
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     assert!(
-        stdout.contains("Repo: demo-repo@github.com@org"),
+        stdout.contains("Repo Identifier: demo-repo@github.com@org"),
         "unexpected stdout: {stdout}"
     );
     assert!(
@@ -741,7 +741,7 @@ fn status_works_inside_git_worktree_checkout() {
 
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     assert!(
-        stdout.contains("Repo: demo@github.com@org"),
+        stdout.contains("Repo Identifier: demo@github.com@org"),
         "expected status output from worktree checkout, got: {stdout}"
     );
 }

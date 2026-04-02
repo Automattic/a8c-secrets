@@ -10,7 +10,7 @@ use zeroize::Zeroizing;
 use crate::crypto::{CryptoEngine, PrivateKey};
 use crate::fs_helpers::{self, REPO_SECRETS_DIR, RepoIdentifier, SecretFileName};
 
-/// Variants shown in [`secret_file_status_legend`] (one row per distinct [`Display`] marker).
+/// Variants shown in [`secret_file_status_legend`] (one row per distinct `Display` marker).
 const LEGEND_VARIANTS: [SecretFileStatus; 5] = [
     SecretFileStatus::FilesInSync,
     SecretFileStatus::DecryptedFileOnly,
@@ -21,7 +21,7 @@ const LEGEND_VARIANTS: [SecretFileStatus; 5] = [
 
 /// Text printed after the file list by [`crate::commands::status::run`].
 ///
-/// Example rows use each variant’s [`Display`] output and [`SecretFileStatus::description`], so the
+/// Example rows use each variant’s `Display` output and [`SecretFileStatus::description`], so the
 /// legend cannot drift from row markers or copy.
 #[must_use]
 pub(crate) fn secret_file_status_legend() -> String {
@@ -94,9 +94,13 @@ impl fmt::Display for SecretFileStatus {
 /// Lists every known secret name (union of `.age` stems and decrypted file names), sorted,
 /// with the same status logic as `a8c-secrets status`.
 ///
+/// When both plaintext and `.age` exist, decrypting for comparison uses the given private key.
+/// Decrypt failures (and the no-key case) become [`SecretFileStatus::CannotDecryptToCompare`] for
+/// that name; they are not returned as `Err` from this function.
+///
 /// # Errors
 ///
-/// Returns an error if listing files fails or any required file cannot be read.
+/// Returns an error if listing directories fails or any required file cannot be read from disk.
 pub(crate) fn secret_file_statuses(
     crypto_engine: &dyn CryptoEngine,
     repo_root: &Path,

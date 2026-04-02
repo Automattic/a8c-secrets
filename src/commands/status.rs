@@ -12,8 +12,10 @@ const EXPECTED_PUBLIC_KEYS: usize = 2;
 ///
 /// # Errors
 ///
-/// Returns an error if repo/config discovery fails, file lists cannot be read,
-/// file contents cannot be read, or decrypt/compare operations fail.
+/// Returns an error if repo/config discovery fails, or secret file lists or file
+/// contents cannot be read from disk. Decrypting an `.age` for comparison may fail
+/// (wrong key, corrupt ciphertext, etc.); those cases appear as the cannot-compare row
+/// (`CannotDecryptToCompare`, 📝❓🔏) for that file, not as an error from this command.
 pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     let repo_root = fs_helpers::find_repo_root()?;
     let repo_identifier = fs_helpers::RepoIdentifier::auto_detect()?;

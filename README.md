@@ -46,6 +46,7 @@ a8c-secrets decrypt
 a8c-secrets decrypt          # Get latest secrets after git pull
 a8c-secrets edit config.json # Edit a secret, auto-encrypts on save
 a8c-secrets encrypt          # Encrypt any modified files
+a8c-secrets status           # Show encryption/decryption status of each secret file for validation
 git add .a8c-secrets/        # Commit encrypted changes
 ```
 

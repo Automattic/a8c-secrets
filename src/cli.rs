@@ -208,8 +208,8 @@ key for this repo identifier.")]
 Rotate one recipient in keys.pub: pick which public key to replace from an
 interactive list, confirm with y/N, then generate a new key pair, update keys.pub in place
 (preserving comments), and re-encrypt each .age file under .a8c-secrets/ using the matching
-plaintext under ~/.a8c-secrets/<repo-id>/ (every file must already show \"in sync\" in
-`a8c-secrets status`).
+plaintext under ~/.a8c-secrets/<host>/<org>/<name>/ (every file must already be in sync, i.e.
+show the 📝✅🔏 status in `a8c-secrets status`).
 
 Requires a local private key that matches at least one line in keys.pub.
 After rotation, prints the new private key and next steps (Secret Store /

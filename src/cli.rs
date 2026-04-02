@@ -260,7 +260,8 @@ Deletes .a8c-secrets/ from the repo, the private key at
 ~/.a8c-secrets/keys/<host>/<org>/<name>.key, and all decrypted files at
 ~/.a8c-secrets/<host>/<org>/<name>/. Requires typing the repo identifier to confirm.
 
-Requires stdin connected to a terminal to type the repo identifier confirmation.")]
+Requires stdout connected to a terminal so the destructive summary is visible (do not
+redirect stdout). Requires stdin connected to a terminal to type the confirmation.")]
     Nuke,
 
     /// Output shell completion script

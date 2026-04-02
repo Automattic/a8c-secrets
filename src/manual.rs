@@ -73,7 +73,8 @@ GETTING STARTED
 
     setup init and keys rotate require stdout connected to a terminal (private keys
     are printed; do not redirect). keys rotate also needs stdin for prompts. setup
-    nuke and rm (without --non-interactive) need stdin for confirmation. edit uses
+    nuke needs stdout and stdin (see the destructive summary before typing the repo id).
+    rm (without --non-interactive) needs stdin for confirmation. edit uses
     $EDITOR and prompts; intended for interactive use.
 
     If stdout is not a terminal, private key blocks are redacted in output (defense in

@@ -111,7 +111,7 @@ Use `decrypt --non-interactive` in CI with `A8C_SECRETS_IDENTITY` (or a key file
 
 ### Terminals, prompts, and private keys on stdout
 - **`setup init`** and **`keys rotate`** require **stdout** connected to a terminal so new private keys are not accidentally written to a file or pipe. `keys rotate` also needs **stdin** for its menus and confirmations.
-- **`setup nuke`** and **`rm`** (without `--non-interactive`) require **stdin** for confirmation prompts.
+- **`setup nuke`** requires **stdout** and **stdin** connected to a terminal (you must see the destructive summary before confirming). **`rm`** (without `--non-interactive`) requires **stdin** for confirmation prompts.
 - **`decrypt`** orphan handling uses **stdin** for the orphan prompt (unless `--non-interactive` is set or stdin is not an interactive terminal — see above).
 - **`edit`** is for interactive use (`$EDITOR`, optional create prompt).
 

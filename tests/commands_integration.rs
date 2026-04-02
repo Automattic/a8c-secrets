@@ -794,13 +794,13 @@ fn setup_nuke_fails_without_tty_and_preserves_repo_secrets_key_and_decrypted() {
         .expect("wait_with_output on setup nuke");
     assert!(
         !out.status.success(),
-        "setup nuke should fail when stdin is not a terminal"
+        "setup nuke should fail when stdout/stdin are not terminals"
     );
     let combined =
         String::from_utf8_lossy(&out.stderr).to_string() + &String::from_utf8_lossy(&out.stdout);
     assert!(
-        combined.contains("stdin") && combined.contains("terminal"),
-        "expected stdin terminal requirement message, got: {combined}"
+        combined.contains("stdout") && combined.contains("terminal"),
+        "expected stdout terminal requirement message, got: {combined}"
     );
     assert!(
         repo_dir.join(".a8c-secrets").exists(),

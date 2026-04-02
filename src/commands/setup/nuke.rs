@@ -8,11 +8,19 @@ use crate::keys;
 
 /// Remove repo and local `a8c-secrets` data for the current repository.
 ///
+/// Requires stdout and stdin to be terminals so the destructive summary and confirmation
+/// prompt are visible and typed interactively.
+///
 /// # Errors
 ///
 /// Returns an error if repo/config discovery fails, user input fails, or any
 /// of the cleanup file operations fail.
 pub fn run() -> Result<()> {
+    if !std::io::stdout().is_terminal() {
+        anyhow::bail!(
+            "`a8c-secrets setup nuke` must not redirect stdout — it prints a destructive summary and confirmation prompt. Run it in a terminal so you can see what you are confirming."
+        );
+    }
     if !std::io::stdin().is_terminal() {
         anyhow::bail!(
             "`a8c-secrets setup nuke` requires stdin connected to a terminal for confirmation."

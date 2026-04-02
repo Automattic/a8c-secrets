@@ -13,12 +13,12 @@ use crate::fs_helpers::{self, REPO_SECRETS_DIR, RepoIdentifier, SecretFileName};
 /// Printed after the file list by [`crate::commands::status::run`]; documents [`SecretFileStatus`] display values.
 pub const SECRET_FILE_STATUS_LEGEND: &str = "\
 Legend:
-  📝 decrypted file under ~/.a8c-secrets/ · 🔏 .age in repo · ✅ match · ❌ missing or mismatch · ❓ cannot compare
+  📝 decrypted file under ~/.a8c-secrets/… · 🔏 .age encrypted file in repo · ✅ match · ❌ missing or mismatch · ❓ cannot compare
 
   📝✅🔏  in sync (plaintext matches .age)
-  📝❌    decrypted only — run encrypt to add .age
-    ❌🔏  encrypted only — run decrypt
-  📝❌🔏  plaintext differs from .age — run encrypt or decrypt depending on which one is out of sync
+  📝❌    decrypted only — run encrypt to generate .age encrypted file
+    ❌🔏  encrypted only — run decrypt to get missing decrypted file
+  📝❌🔏  plaintext differs from .age — run encrypt or decrypt (depending on which one is out of sync)
   📝❓🔏  cannot compare (bad key, corrupt .age, or no private key — see Private key line above)";
 
 /// Sync state of one secret file versus its encrypted counterpart in the repo.

@@ -6,7 +6,7 @@ use clap_complete::Shell;
 ///
 /// Wraps the `age` encryption library to encrypt/decrypt secret files,
 /// keeping decrypted secrets outside the repository working tree in
-/// `~/.a8c-secrets/<host>/<org>/<name>/`, protecting them from accidental commits.
+/// `~/.a8c-secrets/<repo-id>/` (path from `.a8c-secrets/repo-id`), protecting them from accidental commits.
 ///
 /// Use `a8c-secrets manual` for a comprehensive guide.
 #[derive(Debug, Parser)]
@@ -29,10 +29,10 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Decrypt all secret files into `~/.a8c-secrets/<host>/<org>/<name>/`
+    /// Decrypt all secret files into `~/.a8c-secrets/<repo-id>/`
     #[command(
         long_about = "\
-Decrypt all .age files from .a8c-secrets/ into ~/.a8c-secrets/<host>/<org>/<name>/.
+Decrypt all .age files from .a8c-secrets/ into ~/.a8c-secrets/<repo-id>/ (from .a8c-secrets/repo-id).
 
 Requires a private key: the local file from `a8c-secrets keys import`, or
 A8C_SECRETS_IDENTITY (typical in CI). If no key is available, the command fails with
@@ -41,7 +41,7 @@ a hint to import or set the variable.
 If any file cannot be decrypted (wrong key, corrupt ciphertext), the command exits
 with a non-zero status after attempting every file.
 
-Orphan plaintext: if a file exists under ~/.a8c-secrets/<host>/<org>/<name>/ but its matching
+Orphan plaintext: if a file exists under ~/.a8c-secrets/<repo-id>/ but its matching
 .age was removed from the repo (secret dropped from git), decrypt lists these
 orphans. When stdin is a terminal and --non-interactive is not set, you are prompted
 before they are deleted. Otherwise (stdin not a terminal, or --non-interactive),
@@ -59,7 +59,7 @@ ENVIRONMENT:
     /// Encrypt modified secret files back into the repository
     #[command(
         long_about = "\
-Encrypt secret files from ~/.a8c-secrets/<host>/<org>/<name>/ into .a8c-secrets/*.age.
+Encrypt secret files from ~/.a8c-secrets/<repo-id>/ into .a8c-secrets/*.age (repo-id from .a8c-secrets/repo-id).
 
 Uses smart comparison by default: decrypts existing .age files in memory and
 compares byte-for-byte against decrypted plaintext files. Only re-encrypts if content
@@ -84,7 +84,7 @@ NOTES:
         long_about = "\
 Open a secret file in your editor for modification.
 
-Opens ~/.a8c-secrets/<host>/<org>/<name>/<file> in $EDITOR (default: vi on Unix / notepad on Windows). The value is parsed
+Opens ~/.a8c-secrets/<repo-id>/<file> in $EDITOR (default: vi on Unix / notepad on Windows). The value is parsed
 like shell words (program plus optional arguments; quote paths that contain spaces).
 Compares file content before and after the editor session — only encrypts if changed.
 If the file doesn't exist, prompts to create it.
@@ -105,7 +105,7 @@ EXAMPLES:
         long_about = "\
 Remove a secret file completely.
 
-Deletes both the decrypted file at ~/.a8c-secrets/<host>/<org>/<name>/<file> and the
+Deletes both the decrypted file at ~/.a8c-secrets/<repo-id>/<file> and the
 encrypted file at .a8c-secrets/<file>.age. Prompts for confirmation unless
 --non-interactive is provided.
 
@@ -198,7 +198,8 @@ and lists all public keys from .a8c-secrets/keys.pub.")]
 Import a dev private key from the Automattic Secret Store.
 
 Prompts you to paste the private key string (AGE-SECRET-KEY-...) and saves
-it to ~/.a8c-secrets/keys/<host>/<org>/<name>.key with mode 0600. Overwrites any existing
+it under ~/.a8c-secrets/keys/ using the path layout from `.a8c-secrets/repo-id`
+(the repository segment gets a `.key` suffix; mode 0600). Overwrites any existing
 key for this repo identifier.")]
     Import,
 
@@ -208,7 +209,7 @@ key for this repo identifier.")]
 Rotate one recipient in keys.pub: pick which public key to replace from an
 interactive list, confirm with y/N, then generate a new key pair, update keys.pub in place
 (preserving comments), and re-encrypt each .age file under .a8c-secrets/ using the matching
-plaintext under ~/.a8c-secrets/<host>/<org>/<name>/ (every file must already be in sync, i.e.
+plaintext under ~/.a8c-secrets/<repo-id>/ (every file must already be in sync, i.e.
 show the 📝✅🔏 status in `a8c-secrets status`).
 
 Requires a local private key that matches at least one line in keys.pub.
@@ -256,9 +257,9 @@ redirect or capture stdout).")]
     #[command(long_about = "\
 Completely remove a8c-secrets from the repository and local machine.
 
-Deletes .a8c-secrets/ from the repo, the private key at
-~/.a8c-secrets/keys/<host>/<org>/<name>.key, and all decrypted files at
-~/.a8c-secrets/<host>/<org>/<name>/. Requires typing the repo identifier to confirm.
+Deletes .a8c-secrets/ from the repo, the private key under ~/.a8c-secrets/keys/
+(path layout from `.a8c-secrets/repo-id`, `.key` on the repository segment), and all decrypted files under
+~/.a8c-secrets/<repo-id>/. Requires typing the repo identifier to confirm.
 
 Requires stdout connected to a terminal so the destructive summary is visible (do not
 redirect stdout). Requires stdin connected to a terminal to type the confirmation.")]

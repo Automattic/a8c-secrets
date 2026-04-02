@@ -161,7 +161,7 @@ mod tests {
     use crate::crypto::{AgeCrateEngine, PrivateKey, PublicKey};
 
     fn repo_id() -> config::RepoIdentifier {
-        config::RepoIdentifier::try_from("github.com/org/status-test-repo".to_string()).unwrap()
+        config::RepoIdentifier::try_from("status-test-repo@github.com@org".to_string()).unwrap()
     }
 
     fn encrypt_for_recipients(recipients: &[PublicKey], plaintext: &[u8]) -> Vec<u8> {

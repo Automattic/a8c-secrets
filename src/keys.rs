@@ -18,10 +18,11 @@ pub const SECRET_STORE_BASE_URL: &str = "https://mc.a8c.com/secret-store/";
 
 /// Human-readable Secret Store entry name for the dev or CI private key.
 pub fn secret_store_entry_name(repo_identifier: &RepoIdentifier, for_ci: bool) -> String {
+    let name = repo_identifier.repo_name();
     if for_ci {
-        format!("a8c-secrets CI private key for {repo_identifier}")
+        format!("a8c-secrets - {name} - CI private key")
     } else {
-        format!("a8c-secrets dev private key for {repo_identifier}")
+        format!("a8c-secrets - {name} - dev private key")
     }
 }
 
@@ -54,15 +55,9 @@ pub fn print_private_key_to_stdout(title: &str, key: &PrivateKey) -> Result<()> 
 ///
 /// Returns an error if the local secrets home directory cannot be determined.
 pub fn private_key_path(repo_identifier: &RepoIdentifier) -> Result<PathBuf> {
-    let mut key_path = config::secrets_home()?
+    Ok(config::secrets_home()?
         .join("keys")
-        .join(repo_identifier.as_path());
-    if let Some(file_name) = key_path.file_name() {
-        let mut new_name = file_name.to_os_string();
-        new_name.push(".key");
-        key_path.set_file_name(new_name);
-    }
-    Ok(key_path)
+        .join(format!("{}.key", repo_identifier.as_str())))
 }
 
 /// Path to `.a8c-secrets/keys.pub` under the given git repository root.
@@ -267,21 +262,21 @@ mod tests {
     #[test]
     fn secret_store_entry_name_dev_substitutes_identifier() {
         let repo_identifier =
-            RepoIdentifier::try_from("github.com/automattic/wordpress-ios".to_string()).unwrap();
+            RepoIdentifier::try_from("wordpress-ios@github.com@automattic".to_string()).unwrap();
         assert_eq!(
             secret_store_entry_name(&repo_identifier, false),
-            "a8c-secrets dev private key for github.com/automattic/wordpress-ios"
+            "a8c-secrets - wordpress-ios - dev private key"
         );
     }
 
     #[test]
     fn secret_store_entry_name_ci_substitutes_identifier() {
         let repo_identifier =
-            RepoIdentifier::try_from("github.com/automattic/pocket-casts-android".to_string())
+            RepoIdentifier::try_from("pocket-casts-android@github.com@automattic".to_string())
                 .unwrap();
         assert_eq!(
             secret_store_entry_name(&repo_identifier, true),
-            "a8c-secrets CI private key for github.com/automattic/pocket-casts-android"
+            "a8c-secrets - pocket-casts-android - CI private key"
         );
     }
 
@@ -444,12 +439,12 @@ mod tests {
         let secrets_home_str = secrets_home.to_str().unwrap();
         temp_env::with_var("A8C_SECRETS_HOME", Some(secrets_home_str), || {
             let repo_identifier =
-                RepoIdentifier::try_from("github.com/org/my.repo".to_string()).unwrap();
+                RepoIdentifier::try_from("my.repo@github.com@org".to_string()).unwrap();
             let path = private_key_path(&repo_identifier).unwrap();
             let file_name = path.file_name().unwrap().to_string_lossy();
             assert_eq!(
-                file_name, "my.repo.key",
-                "repo name with dots should end in .key not replace the dot extension"
+                file_name, "my.repo@github.com@org.key",
+                "full repo id should end in .key (dots in repo segment preserved)"
             );
         });
     }
@@ -463,7 +458,7 @@ mod tests {
         temp_env::with_var("A8C_SECRETS_HOME", Some(secrets_home_str), || {
             let repo_name = &format!("save-test-{}", std::process::id());
             let repo_identifier =
-                RepoIdentifier::try_from(format!("github.com/org/{repo_name}")).unwrap();
+                RepoIdentifier::try_from(format!("{repo_name}@github.com@org")).unwrap();
             let engine = AgeCrateEngine::new();
             let (private, _) = engine.keygen().unwrap();
             let expected_line = private.to_string().expose_secret().to_string();
@@ -498,7 +493,7 @@ mod tests {
         temp_env::with_var("A8C_SECRETS_HOME", Some(secrets_home_str), || {
             let repo_name = &format!("save-overwrite-{}", std::process::id());
             let repo_identifier =
-                RepoIdentifier::try_from(format!("github.com/org/{repo_name}")).unwrap();
+                RepoIdentifier::try_from(format!("{repo_name}@github.com@org")).unwrap();
             let engine = AgeCrateEngine::new();
             let (key1, _) = engine.keygen().unwrap();
             let (key2, _) = engine.keygen().unwrap();

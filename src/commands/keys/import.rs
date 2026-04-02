@@ -29,6 +29,10 @@ pub fn run() -> Result<()> {
         keys::SECRET_STORE_BASE_URL,
         keys::secret_store_entry_name(&repo_identifier, false)
     );
+    println!(
+        "  Entry Username field should match: {}",
+        repo_identifier.as_str()
+    );
     println!();
 
     // Use hidden input when stdin is a TTY (no key material is echoed). If stdin is

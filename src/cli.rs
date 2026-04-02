@@ -246,7 +246,7 @@ pub enum SetupCommand {
 Initialize a8c-secrets in the current git repository.
 
 Creates `.a8c-secrets/keys.pub` and `.a8c-secrets/repo-id`, generates both dev and CI key pairs,
-and saves the dev private key locally. The initial `host/org/repo` value comes from git remote
+and saves the dev private key locally. The initial `repo@host@org` value comes from git remote
 `origin`; later commands read `repo-id` only (so renames or forks do not move local storage).
 
 Requires stdout connected to a terminal so private keys are shown on screen (do not
@@ -257,9 +257,8 @@ redirect or capture stdout).")]
     #[command(long_about = "\
 Completely remove a8c-secrets from the repository and local machine.
 
-Deletes .a8c-secrets/ from the repo, the private key under ~/.a8c-secrets/keys/
-(path layout from `.a8c-secrets/repo-id`, `.key` on the repository segment), and all decrypted files under
-~/.a8c-secrets/<repo-id>/. Requires typing the repo identifier to confirm.
+Deletes .a8c-secrets/ from the repo, the private key under ~/.a8c-secrets/keys/<repo@host@org>.key,
+and the decrypted directory ~/.a8c-secrets/<repo@host@org>/. Requires typing the repo identifier to confirm.
 
 Requires stdout connected to a terminal so the destructive summary is visible (do not
 redirect stdout). Requires stdin connected to a terminal to type the confirmation.")]

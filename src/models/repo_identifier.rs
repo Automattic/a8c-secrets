@@ -5,25 +5,39 @@ use url::Url;
 
 use crate::models::validation_helpers::validate_single_path_segment;
 
-/// Validated repository identifier (`host/org/repo`) used for local paths and key names.
+/// Validated repository identifier (`repo@host@org`) used for local paths and key names.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RepoIdentifier(pub(crate) String);
-
-impl fmt::Display for RepoIdentifier {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
+pub struct RepoIdentifier {
+    repo: String,
+    host: String,
+    org: String,
+    canonical: String,
 }
 
 impl RepoIdentifier {
-    /// Borrow the identifier as `&str`.
-    pub fn as_str(&self) -> &str {
-        &self.0
+    fn new(repo: String, host: String, org: String) -> Self {
+        let canonical = format!("{repo}@{host}@{org}");
+        Self {
+            repo,
+            host,
+            org,
+            canonical,
+        }
     }
 
-    /// Borrow the identifier as a relative path (`host/org/repo`).
+    /// Borrow the canonical identifier as `&str` (`repo@host@org`).
+    pub fn as_str(&self) -> &str {
+        &self.canonical
+    }
+
+    /// Repo name segment (first field), e.g. `wordpress-ios`.
+    pub fn repo_name(&self) -> &str {
+        &self.repo
+    }
+
+    /// Borrow the identifier as a single relative path component (for `~/.a8c-secrets/...`).
     pub fn as_path(&self) -> &Path {
-        Path::new(&self.0)
+        Path::new(&self.canonical)
     }
 
     /// Extract and validate a repo identifier from a git remote URL string.
@@ -66,13 +80,13 @@ impl RepoIdentifier {
             anyhow::bail!("Could not determine repo name from git remote URL");
         }
 
-        let identifier = format!(
-            "{}/{}/{}",
-            host.to_ascii_lowercase(),
-            org.to_ascii_lowercase(),
-            repo.to_ascii_lowercase()
-        );
-        Self::try_from(identifier)
+        let repo = repo.to_ascii_lowercase();
+        let host = host.to_ascii_lowercase();
+        let org = org.to_ascii_lowercase();
+        validate_repo_segment(&repo, "repo")?;
+        validate_repo_segment(&host, "host")?;
+        validate_repo_segment(&org, "org")?;
+        Ok(Self::new(repo, host, org))
     }
 
     /// Detect and validate the repo identifier from `git remote get-url origin`.
@@ -96,26 +110,48 @@ impl RepoIdentifier {
     }
 }
 
+impl fmt::Display for RepoIdentifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.canonical)
+    }
+}
+
+fn validate_repo_segment(part: &str, label: &'static str) -> Result<()> {
+    validate_single_path_segment(part, "Repo identifier component")?;
+    if part.contains('@') {
+        anyhow::bail!("Repo identifier {label} must not contain '@'");
+    }
+    if part != part.to_ascii_lowercase() {
+        anyhow::bail!("Repo identifier components must be lowercase");
+    }
+    if !part
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || ['.', '-', '_'].contains(&c))
+    {
+        anyhow::bail!("Repo identifier components may only use [a-z0-9._-] characters");
+    }
+    Ok(())
+}
+
 impl TryFrom<String> for RepoIdentifier {
     type Error = anyhow::Error;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        let parts: Vec<&str> = value.split('/').collect();
+        let parts: Vec<&str> = value.split('@').collect();
         if parts.len() != 3 {
-            anyhow::bail!("Repo identifier must be exactly `host/org/repo`");
+            anyhow::bail!("Repo identifier must be exactly `repo@host@org`");
         }
-        for part in parts {
-            validate_single_path_segment(part, "Repo identifier component")?;
-            if part != part.to_ascii_lowercase() {
-                anyhow::bail!("Repo identifier components must be lowercase");
-            }
-            if !part.chars().all(|c| {
-                c.is_ascii_lowercase() || c.is_ascii_digit() || ['.', '-', '_'].contains(&c)
-            }) {
-                anyhow::bail!("Repo identifier components may only use [a-z0-9._-] characters");
-            }
-        }
-        Ok(Self(value))
+        let repo = parts[0];
+        let host = parts[1];
+        let org = parts[2];
+        validate_repo_segment(repo, "repo")?;
+        validate_repo_segment(host, "host")?;
+        validate_repo_segment(org, "org")?;
+        Ok(Self::new(
+            repo.to_string(),
+            host.to_string(),
+            org.to_string(),
+        ))
     }
 }
 
@@ -123,15 +159,13 @@ impl TryFrom<String> for RepoIdentifier {
 mod tests {
     use super::RepoIdentifier;
 
-    // -- RepoIdentifier::from_remote_url --
-
     #[test]
     fn repo_identifier_from_ssh_url() {
         assert_eq!(
             RepoIdentifier::from_remote_url("git@github.com:Automattic/wordpress-ios.git")
                 .unwrap()
                 .as_str(),
-            "github.com/automattic/wordpress-ios"
+            "wordpress-ios@github.com@automattic"
         );
     }
 
@@ -143,7 +177,7 @@ mod tests {
             )
             .unwrap()
             .as_str(),
-            "github.com/automattic/pocket-casts-android"
+            "pocket-casts-android@github.com@automattic"
         );
     }
 
@@ -153,7 +187,7 @@ mod tests {
             RepoIdentifier::from_remote_url("https://github.com/Automattic/MyRepo")
                 .unwrap()
                 .as_str(),
-            "github.com/automattic/myrepo"
+            "myrepo@github.com@automattic"
         );
     }
 
@@ -168,7 +202,7 @@ mod tests {
             RepoIdentifier::from_remote_url("git@github.com:Automattic/WordPress-iOS.git")
                 .unwrap()
                 .as_str(),
-            "github.com/automattic/wordpress-ios"
+            "wordpress-ios@github.com@automattic"
         );
     }
 
@@ -183,7 +217,7 @@ mod tests {
             RepoIdentifier::from_remote_url("https://github.com/Automattic/repo/")
                 .unwrap()
                 .as_str(),
-            "github.com/automattic/repo"
+            "repo@github.com@automattic"
         );
     }
 
@@ -192,19 +226,23 @@ mod tests {
         assert!(RepoIdentifier::from_remote_url("https://github.com/.git").is_err());
     }
 
-    // -- RepoIdentifier validation --
-
     #[test]
     fn repo_identifier_try_from_accepts_typical_values() {
-        RepoIdentifier::try_from("github.com/automattic/wordpress-ios".to_string()).unwrap();
-        RepoIdentifier::try_from("github.tumblr.net/tumblr/tumblr-ios".to_string()).unwrap();
+        RepoIdentifier::try_from("wordpress-ios@github.com@automattic".to_string()).unwrap();
+        RepoIdentifier::try_from("tumblr-ios@github.tumblr.net@tumblr".to_string()).unwrap();
     }
 
     #[test]
     fn repo_identifier_try_from_rejects_invalid_forms() {
         assert!(RepoIdentifier::try_from("..".to_string()).is_err());
-        assert!(RepoIdentifier::try_from("github.com/org".to_string()).is_err());
-        assert!(RepoIdentifier::try_from("github.com/org/repo/extra".to_string()).is_err());
-        assert!(RepoIdentifier::try_from("GitHub.com/org/repo".to_string()).is_err());
+        assert!(RepoIdentifier::try_from("a@b".to_string()).is_err());
+        assert!(RepoIdentifier::try_from("a@b@c@d".to_string()).is_err());
+        assert!(RepoIdentifier::try_from("GitHub@b@c".to_string()).is_err());
+    }
+
+    #[test]
+    fn repo_identifier_repo_name_accessor() {
+        let id = RepoIdentifier::try_from("widget@github.com@acme".to_string()).unwrap();
+        assert_eq!(id.repo_name(), "widget");
     }
 }

@@ -97,7 +97,7 @@ COMMANDS
         edit <file>                       Open in $EDITOR, encrypt if changed (interactive; prompts require TTY)
         rm <file>                         Remove secret (plaintext + .age)
         status                            Show sync state of all files
-        which [file]                      Print path to decrypted dir or to one file under it
+        which [file]                      Print decrypted dir path, or file path (file must exist)
 
     Key management:
         keys show                         Display key paths and keys.pub recipients

@@ -606,6 +606,9 @@ fn which_prints_decrypted_directory_and_file_path() {
         "which should print the decrypted secrets directory"
     );
 
+    fs::create_dir_all(&expected_dir).unwrap();
+    fs::write(expected_dir.join("note.txt"), b"x").unwrap();
+
     let assert_file = configured_command(&repo_dir, &home_dir)
         .args(["which", "note.txt"])
         .assert()
@@ -615,6 +618,53 @@ fn which_prints_decrypted_directory_and_file_path() {
         out_file.trim(),
         expected_file.display().to_string(),
         "which <file> should print the path to that decrypted file"
+    );
+}
+
+#[test]
+fn which_file_fails_when_decrypted_file_missing() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_dir = temp.path().join("repo");
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&repo_dir).unwrap();
+    fs::create_dir_all(&home_dir).unwrap();
+
+    let repo_name = "demo-repo";
+    git_init_with_origin(&repo_dir, repo_name);
+
+    let assert = configured_command(&repo_dir, &home_dir)
+        .args(["which", "missing.txt"])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr).to_string();
+    assert!(
+        stderr.contains("decrypted file does not exist") && stderr.contains("missing.txt"),
+        "unexpected stderr: {stderr}"
+    );
+}
+
+#[test]
+fn which_file_fails_when_path_is_directory() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_dir = temp.path().join("repo");
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&repo_dir).unwrap();
+    fs::create_dir_all(&home_dir).unwrap();
+
+    let repo_name = "demo-repo";
+    git_init_with_origin(&repo_dir, repo_name);
+
+    let expected_dir = secrets_home(&home_dir).join(repo_identifier(repo_name));
+    fs::create_dir_all(expected_dir.join("conflict.txt")).unwrap();
+
+    let assert = configured_command(&repo_dir, &home_dir)
+        .args(["which", "conflict.txt"])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr).to_string();
+    assert!(
+        stderr.contains("not a regular file") && stderr.contains("conflict.txt"),
+        "unexpected stderr: {stderr}"
     );
 }
 

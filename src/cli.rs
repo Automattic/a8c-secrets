@@ -143,11 +143,11 @@ EXAMPLES:
     #[command(
         long_about = "\
 Print the absolute path to ~/.a8c-secrets/<repo-id>/ for this repository (from .a8c-secrets/repo-id),
-or with a file name, the path to that file under that directory.
+or with a file name, the path to that decrypted file under that directory.
 
-Useful for pasting into an IDE open dialog or Xcode/Android build settings (for example:
-`a8c-secrets which Secrets.swift | pbcopy` on macOS). The file path is printed even if the
-file does not exist yet.",
+With a file argument, the file must already exist (run `decrypt` or create it first); otherwise
+the command fails. Useful for pasting into an IDE open dialog or Xcode/Android build settings
+(for example: `a8c-secrets which Secrets.swift | pbcopy` on macOS).",
         after_long_help = "\
 EXAMPLES:
   a8c-secrets which                    # Directory containing decrypted secrets

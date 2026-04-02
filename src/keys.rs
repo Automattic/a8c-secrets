@@ -57,7 +57,7 @@ pub fn print_private_key_to_stdout(title: &str, key: &PrivateKey) -> Result<()> 
 pub fn private_key_path(repo_identifier: &RepoIdentifier) -> Result<PathBuf> {
     Ok(config::secrets_home()?
         .join("keys")
-        .join(format!("{}.key", repo_identifier.as_str())))
+        .join(format!("{repo_identifier}.key")))
 }
 
 /// Path to `.a8c-secrets/keys.pub` under the given git repository root.

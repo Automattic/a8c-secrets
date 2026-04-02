@@ -31,7 +31,7 @@ pub fn run() -> Result<()> {
     );
     println!(
         "  Entry Username field should match: {}",
-        repo_identifier.as_str()
+        repo_identifier.to_string()
     );
     println!();
 

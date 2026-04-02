@@ -80,7 +80,7 @@ pub(crate) fn repo_identifier(repo_root: &Path) -> Result<RepoIdentifier> {
 /// Write `.a8c-secrets/repo-id` after `setup init`.
 pub(crate) fn write_repo_id_file(repo_root: &Path, repo_identifier: &RepoIdentifier) -> Result<()> {
     let path = repo_id_file_path(repo_root);
-    let content = format!("{}\n", repo_identifier.as_str());
+    let content = format!("{repo_identifier}\n");
     std::fs::write(&path, content.as_bytes())
         .with_context(|| format!("Failed to write {}", path.display()))?;
     Ok(())
@@ -109,7 +109,7 @@ pub(crate) fn secrets_home() -> Result<PathBuf> {
 ///
 /// Returns an error if the local secrets home directory cannot be determined.
 pub(crate) fn decrypted_dir(repo_identifier: &RepoIdentifier) -> Result<PathBuf> {
-    Ok(secrets_home()?.join(repo_identifier.as_path()))
+    Ok(secrets_home()?.join(repo_identifier.to_string()))
 }
 
 /// List `.age` file stems in `.a8c-secrets/` (e.g. "google-services.json" from "google-services.json.age").
@@ -300,7 +300,7 @@ mod tests {
         fs::write(secrets.join(REPO_ID_FILE), "myrepo@github.com@org\n").unwrap();
 
         let id = repo_identifier(dir.path()).unwrap();
-        assert_eq!(id.as_str(), "myrepo@github.com@org");
+        assert_eq!(id.to_string(), "myrepo@github.com@org");
     }
 
     #[test]
@@ -321,7 +321,7 @@ mod tests {
         fs::write(secrets.join(REPO_ID_FILE), "myrepo@github.com@org\r\n").unwrap();
 
         let id = repo_identifier(dir.path()).unwrap();
-        assert_eq!(id.as_str(), "myrepo@github.com@org");
+        assert_eq!(id.to_string(), "myrepo@github.com@org");
     }
 
     #[test]
@@ -340,6 +340,6 @@ mod tests {
         let id = RepoIdentifier::try_from("widget@github.com@acme".to_string()).unwrap();
         write_repo_id_file(dir.path(), &id).unwrap();
         let loaded = repo_identifier(dir.path()).unwrap();
-        assert_eq!(loaded.as_str(), "widget@github.com@acme");
+        assert_eq!(loaded.to_string(), "widget@github.com@acme");
     }
 }

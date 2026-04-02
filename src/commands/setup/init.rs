@@ -89,7 +89,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     );
     println!(
         "        Set the entry Username field to: {}",
-        repo_identifier.as_str()
+        repo_identifier.to_string()
     );
     println!("  2. Add the CI private key to Secret Store:");
     println!(
@@ -99,7 +99,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     );
     println!(
         "        Set the entry Username field to: {}",
-        repo_identifier.as_str()
+        repo_identifier.to_string()
     );
     println!("        Under \"Authorized Users and Groups\", add: Apps Infrastructure");
     println!("  3. Add the CI private key to Buildkite secrets as A8C_SECRETS_IDENTITY");

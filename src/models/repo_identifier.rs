@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use std::fmt;
-use std::path::Path;
 use url::Url;
 
 use crate::models::validation_helpers::validate_single_path_segment;
@@ -11,33 +10,16 @@ pub struct RepoIdentifier {
     repo: String,
     host: String,
     org: String,
-    canonical: String,
 }
 
 impl RepoIdentifier {
     fn new(repo: String, host: String, org: String) -> Self {
-        let canonical = format!("{repo}@{host}@{org}");
-        Self {
-            repo,
-            host,
-            org,
-            canonical,
-        }
-    }
-
-    /// Borrow the canonical identifier as `&str` (`repo@host@org`).
-    pub fn as_str(&self) -> &str {
-        &self.canonical
+        Self { repo, host, org }
     }
 
     /// Repo name segment (first field), e.g. `wordpress-ios`.
     pub fn repo_name(&self) -> &str {
         &self.repo
-    }
-
-    /// Borrow the identifier as a single relative path component (for `~/.a8c-secrets/...`).
-    pub fn as_path(&self) -> &Path {
-        Path::new(&self.canonical)
     }
 
     /// Extract and validate a repo identifier from a git remote URL string.
@@ -112,7 +94,7 @@ impl RepoIdentifier {
 
 impl fmt::Display for RepoIdentifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.canonical)
+        write!(f, "{}@{}@{}", self.repo, self.host, self.org)
     }
 }
 
@@ -164,7 +146,7 @@ mod tests {
         assert_eq!(
             RepoIdentifier::from_remote_url("git@github.com:Automattic/wordpress-ios.git")
                 .unwrap()
-                .as_str(),
+                .to_string(),
             "wordpress-ios@github.com@automattic"
         );
     }
@@ -176,7 +158,7 @@ mod tests {
                 "https://github.com/Automattic/pocket-casts-android.git"
             )
             .unwrap()
-            .as_str(),
+            .to_string(),
             "pocket-casts-android@github.com@automattic"
         );
     }
@@ -186,7 +168,7 @@ mod tests {
         assert_eq!(
             RepoIdentifier::from_remote_url("https://github.com/Automattic/MyRepo")
                 .unwrap()
-                .as_str(),
+                .to_string(),
             "myrepo@github.com@automattic"
         );
     }
@@ -201,7 +183,7 @@ mod tests {
         assert_eq!(
             RepoIdentifier::from_remote_url("git@github.com:Automattic/WordPress-iOS.git")
                 .unwrap()
-                .as_str(),
+                .to_string(),
             "wordpress-ios@github.com@automattic"
         );
     }
@@ -216,7 +198,7 @@ mod tests {
         assert_eq!(
             RepoIdentifier::from_remote_url("https://github.com/Automattic/repo/")
                 .unwrap()
-                .as_str(),
+                .to_string(),
             "repo@github.com@automattic"
         );
     }

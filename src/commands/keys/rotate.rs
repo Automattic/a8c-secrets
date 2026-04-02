@@ -115,7 +115,7 @@ fn print_confirmation_plan(
             " - Update the Secret Store entry \"{}\" with the new private key",
             keys::secret_store_entry_name(repo_identifier, false)
         );
-        println!("   (Username field: {})", repo_identifier.as_str());
+        println!("   (Username field: {})", repo_identifier.to_string());
         println!(" - Notify the team to run `a8c-secrets keys import` where needed");
         println!(" - Commit the changes under `.a8c-secrets/` (e.g. keys.pub and *.age files)");
     } else {
@@ -123,7 +123,7 @@ fn print_confirmation_plan(
             " - Update the Secret Store entry \"{}\" with the new private key",
             keys::secret_store_entry_name(repo_identifier, true)
         );
-        println!("   (Username field: {})", repo_identifier.as_str());
+        println!("   (Username field: {})", repo_identifier.to_string());
         println!(
             " - Update CI secrets for this repo (e.g. Buildkite `A8C_SECRETS_IDENTITY`, or anywhere the old private key was configured) with the new private key"
         );
@@ -365,7 +365,7 @@ mod tests {
             let age_path = repo_dir.path().join(".a8c-secrets/secret.txt.age");
             fs::write(&age_path, ciphertext).unwrap();
 
-            let decrypted_dir = secrets_home.join(repo_identifier.as_path());
+            let decrypted_dir = secrets_home.join(repo_identifier.to_string());
             fs::create_dir_all(&decrypted_dir).unwrap();
             fs::write(decrypted_dir.join("secret.txt"), plaintext).unwrap();
 
@@ -457,7 +457,7 @@ mod tests {
             )
             .unwrap();
 
-            let decrypted_dir = secrets_home.join(repo_identifier.as_path());
+            let decrypted_dir = secrets_home.join(repo_identifier.to_string());
             fs::create_dir_all(&decrypted_dir).unwrap();
             fs::write(decrypted_dir.join("secret.txt"), plaintext).unwrap();
 

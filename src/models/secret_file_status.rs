@@ -229,7 +229,7 @@ mod tests {
             || {
                 let repo = tempfile::tempdir().unwrap();
                 fs::create_dir_all(repo.path().join(REPO_SECRETS_DIR)).unwrap();
-                let decrypted_dir = secrets_home.join(rid.as_path());
+                let decrypted_dir = secrets_home.join(rid.to_string());
                 fs::create_dir_all(&decrypted_dir).unwrap();
 
                 let holder = PrivateKey::generate();
@@ -321,7 +321,7 @@ mod tests {
             || {
                 let repo = tempfile::tempdir().unwrap();
                 fs::create_dir_all(repo.path().join(REPO_SECRETS_DIR)).unwrap();
-                let decrypted_dir = secrets_home.join(rid.as_path());
+                let decrypted_dir = secrets_home.join(rid.to_string());
                 fs::create_dir_all(&decrypted_dir).unwrap();
 
                 let a = PrivateKey::generate();

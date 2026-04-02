@@ -222,8 +222,11 @@ pub enum KeysCommand {
     #[command(long_about = "\
 Display key information for the current repository.
 
-Shows the private key file path, derives the corresponding public key,
-and lists all public keys from .a8c-secrets/keys.pub.")]
+Shows the expected private key file path, whether that file was found and is
+readable, then all recipients from .a8c-secrets/keys.pub. The line that matches your
+local private key is prefixed with 🔑 (see legend). If your key file was found and is
+readable but does not match any keys.pub line, the derived public recipient is printed
+once as a note.")]
     Show,
 
     /// Import a private key from the Secret Store

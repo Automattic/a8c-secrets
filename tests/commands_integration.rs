@@ -582,6 +582,43 @@ fn status_succeeds_for_configured_repo() {
 }
 
 #[test]
+fn which_prints_decrypted_directory_and_file_path() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_dir = temp.path().join("repo");
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&repo_dir).unwrap();
+    fs::create_dir_all(&home_dir).unwrap();
+
+    let repo_name = "demo-repo";
+    git_init_with_origin(&repo_dir, repo_name);
+
+    let expected_dir = secrets_home(&home_dir).join(repo_identifier(repo_name));
+    let expected_file = expected_dir.join("note.txt");
+
+    let assert_dir = configured_command(&repo_dir, &home_dir)
+        .arg("which")
+        .assert()
+        .success();
+    let out_dir = String::from_utf8(assert_dir.get_output().stdout.clone()).unwrap();
+    assert_eq!(
+        out_dir.trim(),
+        expected_dir.display().to_string(),
+        "which should print the decrypted secrets directory"
+    );
+
+    let assert_file = configured_command(&repo_dir, &home_dir)
+        .args(["which", "note.txt"])
+        .assert()
+        .success();
+    let out_file = String::from_utf8(assert_file.get_output().stdout.clone()).unwrap();
+    assert_eq!(
+        out_file.trim(),
+        expected_file.display().to_string(),
+        "which <file> should print the path to that decrypted file"
+    );
+}
+
+#[test]
 fn status_succeeds_when_keys_pub_missing_but_shows_error_lines() {
     let temp = tempfile::tempdir().unwrap();
     let repo_dir = temp.path().join("repo");

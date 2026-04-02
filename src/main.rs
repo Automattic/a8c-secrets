@@ -26,6 +26,7 @@ fn main() -> Result<()> {
         cli::Command::Edit(args) => commands::edit::run(&crypto_engine, &args),
         cli::Command::Rm(args) => commands::rm::run(&args),
         cli::Command::Status => commands::status::run(&crypto_engine),
+        cli::Command::Which(args) => commands::which::run(&args),
         cli::Command::Keys(sub) => match sub.command {
             cli::KeysCommand::Show => commands::keys::show::run(),
             cli::KeysCommand::Import => commands::keys::import::run(),

@@ -77,7 +77,7 @@ fn local_key_path(home_dir: &Path, repo_name: &str) -> PathBuf {
         .join(format!("{}.key", repo_identifier(repo_name)))
 }
 
-/// `status` prints the same emoji triplets in the legend as on file rows; tests must match a
+/// `status` file rows use the same emoji triplets as documented in `status --help`; tests match a
 /// single line that includes both the secret filename and the expected marker.
 fn assert_status_output_line(stdout: &str, filename: &str, status_contains: &str) {
     let found = stdout
@@ -571,11 +571,11 @@ fn status_succeeds_for_configured_repo() {
         "unexpected stdout: {stdout}"
     );
     assert!(
-        stdout.contains("Public keys: 2 found (2 expected)"),
+        stdout.contains("Public keys    : 2 found (2 expected)"),
         "unexpected stdout: {stdout}"
     );
     assert!(
-        stdout.contains("Private key:") && stdout.contains("matches a key in keys.pub"),
+        stdout.contains("Private key    : configured (matches a key in keys.pub)"),
         "unexpected stdout: {stdout}"
     );
     assert!(stdout.contains("a.txt"), "unexpected stdout: {stdout}");
@@ -642,11 +642,13 @@ fn status_succeeds_when_keys_pub_missing_but_shows_error_lines() {
 
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     assert!(
-        stdout.contains("Public keys: error:"),
+        stdout.contains("Public keys    : error:"),
         "expected keys.pub error on stdout: {stdout}"
     );
     assert!(
-        stdout.contains("Private key:") && stdout.contains("cannot compare to keys.pub"),
+        stdout.contains(
+            "Private key    : configured (cannot compare to keys.pub — see Public keys line above)"
+        ),
         "unexpected stdout: {stdout}"
     );
 }
@@ -1215,11 +1217,25 @@ fn status_shows_sync_modified_encrypted_only_and_decrypted_only() {
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     assert_status_output_line(&stdout, "in_sync.txt", "📝✅🔏");
     assert_status_output_line(&stdout, "mod.txt", "📝❌🔏");
-    assert_status_output_line(&stdout, "only_age.txt", "   ❌🔏");
-    assert_status_output_line(&stdout, "only_local.txt", "📝❌   ");
+    assert_status_output_line(&stdout, "only_age.txt", "  ❌🔏");
+    assert_status_output_line(&stdout, "only_local.txt", "📝❌  ");
+    assert!(
+        !stdout.contains("Legend:"),
+        "status stdout should not include the legend (see `status --help`): {stdout}"
+    );
+}
+
+#[test]
+fn status_help_includes_legend() {
+    let assert = Command::cargo_bin("a8c-secrets")
+        .unwrap()
+        .args(["status", "--help"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     assert!(
         stdout.contains("Legend:"),
-        "expected legend after file list: {stdout}"
+        "expected status --help to include legend: {stdout}"
     );
 }
 

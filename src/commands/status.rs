@@ -3,7 +3,7 @@ use anyhow::Result;
 use crate::config;
 use crate::crypto::CryptoEngine;
 use crate::keys;
-use crate::models::{secret_file_status_legend, secret_file_statuses};
+use crate::models::secret_file_statuses;
 
 /// Expected number of `age` recipient lines in `keys.pub` (dev + CI).
 const EXPECTED_PUBLIC_KEYS: usize = 2;
@@ -26,13 +26,13 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     match &public_keys_result {
         Ok(keys) => {
             println!(
-                "Public keys: {} found ({} expected)",
+                "Public keys    : {} found ({} expected)",
                 keys.len(),
                 EXPECTED_PUBLIC_KEYS
             );
         }
         Err(e) => {
-            println!("Public keys: error: {e:#}");
+            println!("Public keys    : error: {e:#}");
         }
     }
 
@@ -41,22 +41,22 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
             Ok(public_keys) => {
                 let derived = key.to_public();
                 if public_keys.contains(&derived) {
-                    println!("Private key:  configured (matches a key in keys.pub)");
+                    println!("Private key    : configured (matches a key in keys.pub)");
                 } else {
                     println!(
-                        "Private key:  configured (WARNING: does not match any key in keys.pub)"
+                        "Private key    : configured (WARNING: does not match any key in keys.pub)"
                     );
                 }
             }
             Err(_) => {
                 println!(
-                    "Private key:  configured (cannot compare to keys.pub — see Public keys line above)"
+                    "Private key    : configured (cannot compare to keys.pub — see Public keys line above)"
                 );
             }
         }
         Some(key)
     } else {
-        println!("Private key:  not configured");
+        println!("Private key    : not configured");
         None
     };
 
@@ -78,8 +78,6 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     for (name, status) in rows {
         println!("  {status}  {name}");
     }
-    println!();
-    print!("{}", secret_file_status_legend());
 
     Ok(())
 }

@@ -147,3 +147,184 @@ pub(crate) fn secret_file_statuses(
     }
     Ok(out)
 }
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::io::Write;
+
+    use serial_test::serial;
+
+    use super::{secret_file_statuses, secret_file_status_legend, SecretFileStatus, LEGEND_VARIANTS};
+    use crate::crypto::{AgeCrateEngine, PrivateKey, PublicKey};
+    use crate::fs_helpers::{self, REPO_SECRETS_DIR, SecretFileName};
+
+    fn repo_id() -> fs_helpers::RepoIdentifier {
+        fs_helpers::RepoIdentifier::try_from("github.com/org/status-test-repo".to_string()).unwrap()
+    }
+
+    fn encrypt_for_recipients(recipients: &[PublicKey], plaintext: &[u8]) -> Vec<u8> {
+        let encryptor =
+            age::Encryptor::with_recipients(recipients.iter().map(|r| r as &dyn age::Recipient))
+                .expect("non-empty recipients");
+        let mut encrypted = vec![];
+        let mut writer = encryptor.wrap_output(&mut encrypted).unwrap();
+        writer.write_all(plaintext).unwrap();
+        writer.finish().unwrap();
+        encrypted
+    }
+
+    fn find_status(rows: &[(SecretFileName, SecretFileStatus)], stem: &str) -> SecretFileStatus {
+        rows.iter()
+            .find(|(n, _)| n.as_str() == stem)
+            .map_or_else(|| panic!("no row for {stem}: {rows:?}"), |(_, s)| *s)
+    }
+
+    #[test]
+    fn legend_rows_use_display_and_description_per_variant() {
+        let legend = secret_file_status_legend();
+        for status in LEGEND_VARIANTS {
+            let row = format!("  {}  {}", status, status.description());
+            assert!(
+                legend.contains(&row),
+                "legend missing row for {status:?}:\n{legend}"
+            );
+        }
+    }
+
+    #[test]
+    #[serial(a8c_secrets_home)]
+    fn secret_file_statuses_empty_when_no_secret_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let home_dir = temp.path().join("home");
+        fs::create_dir_all(&home_dir).unwrap();
+        let secrets_home = home_dir.join(".a8c-secrets");
+        let rid = repo_id();
+        temp_env::with_var("A8C_SECRETS_HOME", Some(secrets_home.to_str().unwrap()), || {
+            let repo = tempfile::tempdir().unwrap();
+            fs::create_dir_all(repo.path().join(REPO_SECRETS_DIR)).unwrap();
+            let engine = AgeCrateEngine::new();
+            let key = PrivateKey::generate();
+            let rows = secret_file_statuses(&engine, repo.path(), &rid, Some(&key)).unwrap();
+            assert!(rows.is_empty());
+        });
+    }
+
+    #[test]
+    #[serial(a8c_secrets_home)]
+    fn secret_file_statuses_branches_with_private_key() {
+        let temp = tempfile::tempdir().unwrap();
+        let home_dir = temp.path().join("home");
+        fs::create_dir_all(&home_dir).unwrap();
+        let secrets_home = home_dir.join(".a8c-secrets");
+        let rid = repo_id();
+        temp_env::with_var("A8C_SECRETS_HOME", Some(secrets_home.to_str().unwrap()), || {
+            let repo = tempfile::tempdir().unwrap();
+            fs::create_dir_all(repo.path().join(REPO_SECRETS_DIR)).unwrap();
+            let decrypted_dir = secrets_home.join(rid.as_path());
+            fs::create_dir_all(&decrypted_dir).unwrap();
+
+            let holder = PrivateKey::generate();
+            let other = PrivateKey::generate();
+            let third = PrivateKey::generate();
+            let holder_can_decrypt = [holder.to_public(), other.to_public()];
+            let holder_cannot_decrypt = [other.to_public(), third.to_public()];
+
+            let plain_ok = b"match";
+            fs::write(
+                repo.path().join(".a8c-secrets/in_sync.txt.age"),
+                encrypt_for_recipients(&holder_can_decrypt, plain_ok),
+            )
+            .unwrap();
+            fs::write(decrypted_dir.join("in_sync.txt"), plain_ok).unwrap();
+
+            fs::write(
+                repo.path().join(".a8c-secrets/differ.txt.age"),
+                encrypt_for_recipients(&holder_can_decrypt, b"age-side"),
+            )
+            .unwrap();
+            fs::write(decrypted_dir.join("differ.txt"), b"local-side").unwrap();
+
+            fs::write(decrypted_dir.join("local_only.txt"), b"x").unwrap();
+
+            fs::write(
+                repo.path().join(".a8c-secrets/age_only.txt.age"),
+                encrypt_for_recipients(&holder_can_decrypt, b"only-age"),
+            )
+            .unwrap();
+
+            fs::write(repo.path().join(".a8c-secrets/bad_age.txt.age"), b"NOT VALID AGE").unwrap();
+            fs::write(decrypted_dir.join("bad_age.txt"), b"y").unwrap();
+
+            fs::write(
+                repo.path().join(".a8c-secrets/wrong_key.txt.age"),
+                encrypt_for_recipients(&holder_cannot_decrypt, b"payload"),
+            )
+            .unwrap();
+            fs::write(decrypted_dir.join("wrong_key.txt"), b"payload").unwrap();
+
+            let engine = AgeCrateEngine::new();
+            let rows = secret_file_statuses(&engine, repo.path(), &rid, Some(&holder)).unwrap();
+
+            assert_eq!(rows.len(), 6);
+            assert_eq!(
+                find_status(&rows, "in_sync.txt"),
+                SecretFileStatus::FilesInSync
+            );
+            assert_eq!(
+                find_status(&rows, "differ.txt"),
+                SecretFileStatus::FilesDiffer
+            );
+            assert_eq!(
+                find_status(&rows, "local_only.txt"),
+                SecretFileStatus::DecryptedFileOnly
+            );
+            assert_eq!(
+                find_status(&rows, "age_only.txt"),
+                SecretFileStatus::EncryptedFileOnly
+            );
+            assert_eq!(
+                find_status(&rows, "bad_age.txt"),
+                SecretFileStatus::CannotDecryptToCompare
+            );
+            assert_eq!(
+                find_status(&rows, "wrong_key.txt"),
+                SecretFileStatus::CannotDecryptToCompare
+            );
+        });
+    }
+
+    #[test]
+    #[serial(a8c_secrets_home)]
+    fn secret_file_statuses_cannot_compare_without_private_key() {
+        let temp = tempfile::tempdir().unwrap();
+        let home_dir = temp.path().join("home");
+        fs::create_dir_all(&home_dir).unwrap();
+        let secrets_home = home_dir.join(".a8c-secrets");
+        let rid = repo_id();
+        temp_env::with_var("A8C_SECRETS_HOME", Some(secrets_home.to_str().unwrap()), || {
+            let repo = tempfile::tempdir().unwrap();
+            fs::create_dir_all(repo.path().join(REPO_SECRETS_DIR)).unwrap();
+            let decrypted_dir = secrets_home.join(rid.as_path());
+            fs::create_dir_all(&decrypted_dir).unwrap();
+
+            let a = PrivateKey::generate();
+            let b = PrivateKey::generate();
+            let recipients = [a.to_public(), b.to_public()];
+            fs::write(
+                repo.path().join(".a8c-secrets/both.txt.age"),
+                encrypt_for_recipients(&recipients, b"secret"),
+            )
+            .unwrap();
+            fs::write(decrypted_dir.join("both.txt"), b"secret").unwrap();
+
+            let engine = AgeCrateEngine::new();
+            let rows = secret_file_statuses(&engine, repo.path(), &rid, None).unwrap();
+            assert_eq!(rows.len(), 1);
+            assert_eq!(
+                find_status(&rows, "both.txt"),
+                SecretFileStatus::CannotCompareNoPrivateKey
+            );
+        });
+    }
+}

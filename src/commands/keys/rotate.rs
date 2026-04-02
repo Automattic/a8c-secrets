@@ -55,8 +55,9 @@ fn print_rotation_reminder() {
     println!();
     println!(
         "  • This command requires every secret to show \"in sync\" in `a8c-secrets status` first. \
-         It then re-encrypts each `.age` from the matching plaintext under ~/.a8c-secrets/, so \
-         new ciphertext matches your local decrypted files (not stale `.age` blobs if they had drifted)."
+         It then re-encrypts each `.age` from the matching plaintext in your repo's decrypted \
+         directory under ~/.a8c-secrets/<host>/<org>/<name>/, so new ciphertext matches your \
+         local decrypted files (not stale `.age` blobs if they had drifted)."
     );
     println!();
     println!("{PUBLIC_KEY_LIST_LEGEND}");

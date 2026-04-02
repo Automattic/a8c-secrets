@@ -91,18 +91,21 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
         "        Set the entry Username field to: {}",
         repo_identifier.as_str()
     );
-    println!("  2. Add the CI private key to Buildkite secrets");
-    println!("     (coordinate with Apps Infra for the A8C_SECRETS_IDENTITY env var)");
+    println!("  2. Add the CI private key to Secret Store:");
     println!(
-        "     Optional — Secret Store entry name for CI: {}",
+        "     {}  (create entry: {})",
+        keys::SECRET_STORE_BASE_URL,
         keys::secret_store_entry_name(&repo_identifier, true)
     );
     println!(
-        "        If using Secret Store for CI, set Username to: {}",
+        "        Set the entry Username field to: {}",
         repo_identifier.as_str()
     );
-    println!("  3. Commit .a8c-secrets/keys.pub and .a8c-secrets/{REPO_ID_FILE}");
-    println!("  4. Add secret files with `a8c-secrets edit <filename>`");
+    println!("        Under \"Authorized Users and Groups\", add: Apps Infrastructure");
+    println!("  3. Add the CI private key to Buildkite secrets as A8C_SECRETS_IDENTITY");
+    println!("     (coordinate with Apps Infra if needed)");
+    println!("  4. Commit .a8c-secrets/keys.pub and .a8c-secrets/{REPO_ID_FILE}");
+    println!("  5. Start adding secret files with `a8c-secrets edit <filename>`");
     println!();
     println!("IMPORTANT: Save both private keys now — they cannot be recovered later.");
 

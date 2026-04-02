@@ -29,7 +29,7 @@ curl -fsSL https://raw.githubusercontent.com/Automattic/a8c-secrets/main/install
 ```sh
 cd my-repo
 a8c-secrets setup init
-# Follow the printed instructions for Secret Store + Buildkite
+# Follow the printed instructions (Secret Store for dev + CI, then Buildkite)
 ```
 
 **Developer onboarding:**
@@ -84,7 +84,7 @@ Using the [`age` crate](https://docs.rs/age/latest/age/) eliminates the external
 Decrypted secrets in `~/.a8c-secrets/<repo@host@org>/` can never be accidentally committed (even a `.gitignore` typo can't expose them) and are invisible to AI agents restricted to the repo working copy.
 
 ### Two key pairs per repo (dev + CI)
-The dev private key is shared by all developers via Secret Store. The CI private key is injected as a Buildkite secret via `A8C_SECRETS_IDENTITY`. Which key is yours is determined by public key derivation (matching your private key against `keys.pub`). Lines starting with `#` in `keys.pub` are comments and are ignored when reading recipients (same as age); they are optional for humans only.
+The dev private key is shared by all developers via Secret Store. The CI private key is stored in Secret Store (with Apps Infrastructure authorized) and injected in CI as a Buildkite secret via `A8C_SECRETS_IDENTITY`. Which key is yours is determined by public key derivation (matching your private key against `keys.pub`). Lines starting with `#` in `keys.pub` are comments and are ignored when reading recipients (same as age); they are optional for humans only.
 
 ### Secret Store entry names
 Those are human-created. Use the short title and set **Username** to the full id:

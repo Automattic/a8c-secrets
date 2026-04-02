@@ -57,7 +57,7 @@ GETTING STARTED
 
         cd my-repo
         a8c-secrets setup init
-        # Follow the printed instructions for Secret Store + Buildkite
+        # Follow the printed instructions (Secret Store for dev + CI, then Buildkite)
 
     2. Developer onboarding:
 
@@ -123,7 +123,7 @@ KEY MANAGEMENT
     Each repo has two `age` key pairs:
 
         dev   Shared by all developers. Private key in Secret Store.
-        ci    Used by CI agents (Buildkite). Private key in Buildkite secrets.
+        ci    Used by CI agents (Buildkite). Private key in Secret Store (Apps Infrastructure authorized) and in Buildkite secrets.
 
     Secret Store entry names (typical convention):
         a8c-secrets - <repo-name> - dev private key

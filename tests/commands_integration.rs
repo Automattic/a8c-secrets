@@ -20,6 +20,10 @@ fn git_init(repo_dir: &Path) {
     fs::create_dir_all(&secrets_dir).unwrap();
 }
 
+fn write_repo_id(repo_dir: &Path, id: &str) {
+    fs::write(repo_dir.join(".a8c-secrets/repo-id"), format!("{id}\n")).unwrap();
+}
+
 fn git_init_with_origin(repo_dir: &Path, repo_name: &str) {
     git_init(repo_dir);
     let remote = format!("https://github.com/org/{repo_name}.git");
@@ -29,6 +33,7 @@ fn git_init_with_origin(repo_dir: &Path, repo_name: &str) {
         .status()
         .expect("spawn git remote");
     assert!(status.success(), "git remote add failed");
+    write_repo_id(repo_dir, &repo_identifier(repo_name));
 }
 
 fn write_keys_pub(repo_dir: &Path, dev_public: &str, ci_public: &str) {
@@ -261,6 +266,55 @@ fn decrypt_non_interactive_succeeds_without_origin_when_no_age_files_exist() {
         !secrets_home.exists(),
         "local secrets home should not be created when there are no .age files"
     );
+}
+
+#[test]
+fn decrypt_respects_repo_id_file_over_origin() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_dir = temp.path().join("repo");
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&repo_dir).unwrap();
+    fs::create_dir_all(&home_dir).unwrap();
+
+    git_init(&repo_dir);
+    let status = std::process::Command::new("git")
+        .args([
+            "remote",
+            "add",
+            "origin",
+            "https://github.com/somefork/forked-repo.git",
+        ])
+        .current_dir(&repo_dir)
+        .status()
+        .expect("git remote add");
+    assert!(status.success(), "git remote add failed");
+
+    let canonical = "github.com/automattic/canonical-repo";
+    write_repo_id(&repo_dir, canonical);
+
+    let dev_identity = age::x25519::Identity::generate();
+    let ci_identity = age::x25519::Identity::generate();
+    let dev_private = dev_identity.to_string().expose_secret().to_string();
+    let dev_public = dev_identity.to_public().to_string();
+    let ci_public = ci_identity.to_public().to_string();
+    write_keys_pub(&repo_dir, &dev_public, &ci_public);
+
+    let plaintext = br#"{"token":"pinned-namespace"}"#;
+    let ciphertext = encrypt_for(
+        &[dev_identity.to_public(), ci_identity.to_public()],
+        plaintext,
+    );
+    fs::write(repo_dir.join(".a8c-secrets/secret.json.age"), ciphertext).unwrap();
+
+    configured_command(&repo_dir, &home_dir)
+        .arg("decrypt")
+        .arg("--non-interactive")
+        .env("A8C_SECRETS_IDENTITY", dev_private)
+        .assert()
+        .success();
+
+    let out_dir = secrets_home(&home_dir).join(Path::new(canonical));
+    assert_eq!(fs::read(out_dir.join("secret.json")).unwrap(), plaintext);
 }
 
 #[test]

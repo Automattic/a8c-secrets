@@ -1,8 +1,8 @@
 use anyhow::Result;
 
 use super::{PUBLIC_KEY_LIST_LEGEND, PublicKeyListRow};
+use crate::config;
 use crate::crypto::PrivateKey;
-use crate::fs_helpers;
 use crate::keys;
 
 /// Display local/private key status and repository public keys.
@@ -12,8 +12,8 @@ use crate::keys;
 /// Returns an error if repo/config discovery fails or `keys.pub` cannot be
 /// read.
 pub fn run() -> Result<()> {
-    let repo_root = fs_helpers::find_repo_root()?;
-    let repo_identifier = fs_helpers::RepoIdentifier::auto_detect()?;
+    let repo_root = config::find_repo_root()?;
+    let repo_identifier = config::repo_identifier(&repo_root)?;
 
     // Private key info
     let key_path = keys::private_key_path(&repo_identifier)?;

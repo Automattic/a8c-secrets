@@ -3,8 +3,8 @@
 
 mod cli;
 mod commands;
+mod config;
 mod crypto;
-mod fs_helpers;
 mod keys;
 mod manual;
 mod models;

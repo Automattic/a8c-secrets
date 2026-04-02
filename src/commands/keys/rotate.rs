@@ -6,8 +6,8 @@ use std::io::IsTerminal;
 use zeroize::Zeroizing;
 
 use super::{PUBLIC_KEY_LIST_LEGEND, PublicKeyListRow};
+use crate::config::{self, REPO_SECRETS_DIR, SecretFileName};
 use crate::crypto::{CryptoEngine, PublicKey};
-use crate::fs_helpers::{self, REPO_SECRETS_DIR, SecretFileName};
 use crate::keys;
 use crate::models::secret_file_statuses;
 
@@ -65,7 +65,7 @@ fn print_rotation_reminder() {
 }
 
 fn print_confirmation_plan(
-    repo_identifier: &fs_helpers::RepoIdentifier,
+    repo_identifier: &config::RepoIdentifier,
     rotating_owned: bool,
     keys_pub_path: &Path,
     local_key_path: &Path,
@@ -154,7 +154,7 @@ fn print_confirmation_plan(
 pub(crate) fn apply_key_rotation(
     crypto_engine: &dyn CryptoEngine,
     repo_root: &Path,
-    repo_identifier: &fs_helpers::RepoIdentifier,
+    repo_identifier: &config::RepoIdentifier,
     old_public_key: &PublicKey,
     rotating_owned: bool,
 ) -> Result<()> {
@@ -165,8 +165,8 @@ pub(crate) fn apply_key_rotation(
     let recipient_public_keys_after_rotation = keys::load_public_keys(repo_root)?;
 
     let secrets_dir = repo_root.join(REPO_SECRETS_DIR);
-    let decrypted_dir = fs_helpers::decrypted_dir(repo_identifier)?;
-    let age_files = fs_helpers::list_age_files(repo_root)?;
+    let decrypted_dir = config::decrypted_dir(repo_identifier)?;
+    let age_files = config::list_age_files(repo_root)?;
 
     for name in &age_files {
         let decrypted_path = decrypted_dir.join(name.as_str());
@@ -177,7 +177,7 @@ pub(crate) fn apply_key_rotation(
         let new_ciphertext =
             crypto_engine.encrypt(plaintext.as_slice(), &recipient_public_keys_after_rotation)?;
         let age_path = secrets_dir.join(format!("{name}.age"));
-        fs_helpers::atomic_write(&age_path, &new_ciphertext)?;
+        config::atomic_write(&age_path, &new_ciphertext)?;
         println!("  {name} — re-encrypted");
     }
 
@@ -221,8 +221,8 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
         );
     }
 
-    let repo_root = fs_helpers::find_repo_root()?;
-    let repo_identifier = fs_helpers::RepoIdentifier::auto_detect()?;
+    let repo_root = config::find_repo_root()?;
+    let repo_identifier = config::repo_identifier(&repo_root)?;
 
     let private_key_for_decrypt = keys::get_private_key(&repo_identifier)?;
     let public_key_from_decrypt_private_key = private_key_for_decrypt.to_public();
@@ -259,8 +259,8 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     let keys_pub_path = keys::public_keys_path(&repo_root);
     let local_key_path = keys::private_key_path(&repo_identifier)?;
     let secrets_dir = repo_root.join(REPO_SECRETS_DIR);
-    let age_files = fs_helpers::list_age_files(&repo_root)?;
-    let decrypted_dir_display = fs_helpers::decrypted_dir(&repo_identifier)
+    let age_files = config::list_age_files(&repo_root)?;
+    let decrypted_dir_display = config::decrypted_dir(&repo_identifier)
         .ok()
         .map(|p| p.display().to_string());
 
@@ -292,8 +292,8 @@ mod tests {
     use std::io::{Read, Write};
 
     use super::apply_key_rotation;
+    use crate::config::{self, REPO_SECRETS_DIR};
     use crate::crypto::{AgeCrateEngine, PrivateKey, PublicKey};
-    use crate::fs_helpers::{self, REPO_SECRETS_DIR};
     use crate::keys;
     use serial_test::serial;
 
@@ -338,8 +338,7 @@ mod tests {
         temp_env::with_var("A8C_SECRETS_HOME", Some(secrets_home_str), || {
             let repo_dir = tempfile::tempdir().unwrap();
             let repo_identifier =
-                fs_helpers::RepoIdentifier::try_from("github.com/org/demo-repo".to_string())
-                    .unwrap();
+                config::RepoIdentifier::try_from("github.com/org/demo-repo".to_string()).unwrap();
             fs::create_dir_all(repo_dir.path().join(REPO_SECRETS_DIR)).unwrap();
 
             let old_dev_identity = age::x25519::Identity::generate();
@@ -428,8 +427,7 @@ mod tests {
         temp_env::with_var("A8C_SECRETS_HOME", Some(secrets_home_str), || {
             let repo_dir = tempfile::tempdir().unwrap();
             let repo_identifier =
-                fs_helpers::RepoIdentifier::try_from("github.com/org/demo-repo".to_string())
-                    .unwrap();
+                config::RepoIdentifier::try_from("github.com/org/demo-repo".to_string()).unwrap();
             fs::create_dir_all(repo_dir.path().join(REPO_SECRETS_DIR)).unwrap();
 
             let old_dev_identity = age::x25519::Identity::generate();

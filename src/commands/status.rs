@@ -1,7 +1,7 @@
 use anyhow::Result;
 
+use crate::config;
 use crate::crypto::CryptoEngine;
-use crate::fs_helpers;
 use crate::keys;
 use crate::models::{secret_file_status_legend, secret_file_statuses};
 
@@ -17,8 +17,8 @@ const EXPECTED_PUBLIC_KEYS: usize = 2;
 /// (wrong key, corrupt ciphertext, etc.); those cases appear as the cannot-compare row
 /// (`CannotDecryptToCompare`, 📝❓🔏) for that file, not as an error from this command.
 pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
-    let repo_root = fs_helpers::find_repo_root()?;
-    let repo_identifier = fs_helpers::RepoIdentifier::auto_detect()?;
+    let repo_root = config::find_repo_root()?;
+    let repo_identifier = config::repo_identifier(&repo_root)?;
 
     println!("Repo: {repo_identifier}");
 

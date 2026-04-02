@@ -84,7 +84,7 @@ COMMANDS
     Daily operations:
         decrypt [--non-interactive]       Decrypt .age files to ~/.a8c-secrets/<host>/<org>/<name>/
         encrypt [file ...] [--force]      Encrypt modified secrets back to .age
-        edit <file>                       Open in $EDITOR, encrypt if changed (TTY required)
+        edit <file>                       Open in $EDITOR, encrypt if changed (interactive; prompts require TTY)
         rm <file>                         Remove secret (plaintext + .age)
         status                            Show sync state of all files
 

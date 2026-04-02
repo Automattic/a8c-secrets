@@ -1,3 +1,9 @@
+//! Paths and repo identity for the active git checkout.
+//!
+//! Resolves the repository root, `~/.a8c-secrets` layout, canonical [`RepoIdentifier`] from
+//! `.a8c-secrets/repo-id`, and helpers to list encrypted/decrypted secret files and atomically
+//! write sensitive outputs.
+
 use anyhow::{Context, Result};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -6,6 +12,8 @@ pub(crate) use crate::models::{RepoIdentifier, SecretFileName};
 
 /// Name of the in-repo config directory.
 pub(crate) const REPO_SECRETS_DIR: &str = ".a8c-secrets";
+/// File under [`REPO_SECRETS_DIR`] storing the canonical `host/org/repo` identifier (one line).
+pub(crate) const REPO_ID_FILE: &str = "repo-id";
 /// Name of the local home directory used to store private/decrypted secrets.
 pub(crate) const HOME_SECRETS_DIR: &str = ".a8c-secrets";
 
@@ -31,6 +39,51 @@ pub(crate) fn find_repo_root() -> Result<PathBuf> {
         anyhow::bail!("Could not determine git repository root");
     }
     Ok(PathBuf::from(root))
+}
+
+fn repo_id_file_path(repo_root: &Path) -> PathBuf {
+    repo_root.join(REPO_SECRETS_DIR).join(REPO_ID_FILE)
+}
+
+/// Read and validate the canonical repo identifier from `.a8c-secrets/repo-id`.
+///
+/// The file must contain exactly one `host/org/repo` string. Trailing `\r` and `\n`
+/// bytes are removed (typical line endings); there is no dedicated `std` “chomp” API,
+/// so this uses [`str::trim_end_matches`].
+///
+/// # Errors
+///
+/// Returns an error if the file is missing, empty after removing trailing newlines,
+/// unreadable, or not a valid [`RepoIdentifier`].
+pub(crate) fn repo_identifier(repo_root: &Path) -> Result<RepoIdentifier> {
+    let path = repo_id_file_path(repo_root);
+    if !path.is_file() {
+        anyhow::bail!(
+            "Missing {}. Run `a8c-secrets setup init` in this repository first.",
+            path.display()
+        );
+    }
+    let raw = std::fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read {}", path.display()))?;
+    let trimmed = raw.trim_end_matches(['\n', '\r']);
+    if trimmed.is_empty() {
+        anyhow::bail!("{} is empty (expected host/org/repo)", path.display());
+    }
+    RepoIdentifier::try_from(trimmed.to_string()).with_context(|| {
+        format!(
+            "Invalid repo identifier in {} (expected host/org/repo)",
+            path.display()
+        )
+    })
+}
+
+/// Write `.a8c-secrets/repo-id` after `setup init`.
+pub(crate) fn write_repo_id_file(repo_root: &Path, repo_identifier: &RepoIdentifier) -> Result<()> {
+    let path = repo_id_file_path(repo_root);
+    let content = format!("{}\n", repo_identifier.as_str());
+    std::fs::write(&path, content.as_bytes())
+        .with_context(|| format!("Failed to write {}", path.display()))?;
+    Ok(())
 }
 
 /// Path to the local secrets home directory.
@@ -235,5 +288,58 @@ mod tests {
 
         atomic_write(&path, b"new").unwrap();
         assert_eq!(fs::read(&path).unwrap(), b"new");
+    }
+
+    // -- repo_identifier / write_repo_id_file --
+
+    #[test]
+    fn repo_identifier_trims_trailing_lf_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let secrets = dir.path().join(REPO_SECRETS_DIR);
+        fs::create_dir_all(&secrets).unwrap();
+        fs::write(secrets.join(REPO_ID_FILE), "github.com/org/myrepo\n").unwrap();
+
+        let id = repo_identifier(dir.path()).unwrap();
+        assert_eq!(id.as_str(), "github.com/org/myrepo");
+    }
+
+    #[test]
+    fn repo_identifier_does_not_trim_leading_whitespace() {
+        let dir = tempfile::tempdir().unwrap();
+        let secrets = dir.path().join(REPO_SECRETS_DIR);
+        fs::create_dir_all(&secrets).unwrap();
+        fs::write(secrets.join(REPO_ID_FILE), " github.com/org/myrepo\n").unwrap();
+
+        assert!(repo_identifier(dir.path()).is_err());
+    }
+
+    #[test]
+    fn repo_identifier_trims_trailing_crlf() {
+        let dir = tempfile::tempdir().unwrap();
+        let secrets = dir.path().join(REPO_SECRETS_DIR);
+        fs::create_dir_all(&secrets).unwrap();
+        fs::write(secrets.join(REPO_ID_FILE), "github.com/org/myrepo\r\n").unwrap();
+
+        let id = repo_identifier(dir.path()).unwrap();
+        assert_eq!(id.as_str(), "github.com/org/myrepo");
+    }
+
+    #[test]
+    fn repo_identifier_missing_file_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = repo_identifier(dir.path()).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(msg.contains("setup init"), "unexpected: {msg}");
+    }
+
+    #[test]
+    fn write_repo_id_file_round_trips() {
+        let dir = tempfile::tempdir().unwrap();
+        let secrets = dir.path().join(REPO_SECRETS_DIR);
+        fs::create_dir_all(&secrets).unwrap();
+        let id = RepoIdentifier::try_from("github.com/acme/widget".to_string()).unwrap();
+        write_repo_id_file(dir.path(), &id).unwrap();
+        let loaded = repo_identifier(dir.path()).unwrap();
+        assert_eq!(loaded.as_str(), "github.com/acme/widget");
     }
 }

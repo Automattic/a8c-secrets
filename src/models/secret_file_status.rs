@@ -7,8 +7,8 @@ use std::path::Path;
 use anyhow::Result;
 use zeroize::Zeroizing;
 
+use crate::config::{self, REPO_SECRETS_DIR, RepoIdentifier, SecretFileName};
 use crate::crypto::{CryptoEngine, PrivateKey};
-use crate::fs_helpers::{self, REPO_SECRETS_DIR, RepoIdentifier, SecretFileName};
 
 /// Variants shown in [`secret_file_status_legend`] (one row per distinct `Display` marker).
 const LEGEND_VARIANTS: [SecretFileStatus; 5] = [
@@ -108,15 +108,14 @@ pub(crate) fn secret_file_statuses(
     private_key: Option<&PrivateKey>,
 ) -> Result<Vec<(SecretFileName, SecretFileStatus)>> {
     let age_files: BTreeSet<SecretFileName> =
-        fs_helpers::list_age_files(repo_root)?.into_iter().collect();
-    let decrypted_files: BTreeSet<SecretFileName> =
-        fs_helpers::list_decrypted_files(repo_identifier)?
-            .into_iter()
-            .collect();
+        config::list_age_files(repo_root)?.into_iter().collect();
+    let decrypted_files: BTreeSet<SecretFileName> = config::list_decrypted_files(repo_identifier)?
+        .into_iter()
+        .collect();
     let all_names: BTreeSet<SecretFileName> = age_files.union(&decrypted_files).cloned().collect();
 
     let secrets_dir = repo_root.join(REPO_SECRETS_DIR);
-    let decrypted_dir = fs_helpers::decrypted_dir(repo_identifier)?;
+    let decrypted_dir = config::decrypted_dir(repo_identifier)?;
 
     let mut out = Vec::new();
     for name in all_names {
@@ -158,11 +157,11 @@ mod tests {
     use super::{
         LEGEND_VARIANTS, SecretFileStatus, secret_file_status_legend, secret_file_statuses,
     };
+    use crate::config::{self, REPO_SECRETS_DIR, SecretFileName};
     use crate::crypto::{AgeCrateEngine, PrivateKey, PublicKey};
-    use crate::fs_helpers::{self, REPO_SECRETS_DIR, SecretFileName};
 
-    fn repo_id() -> fs_helpers::RepoIdentifier {
-        fs_helpers::RepoIdentifier::try_from("github.com/org/status-test-repo".to_string()).unwrap()
+    fn repo_id() -> config::RepoIdentifier {
+        config::RepoIdentifier::try_from("github.com/org/status-test-repo".to_string()).unwrap()
     }
 
     fn encrypt_for_recipients(recipients: &[PublicKey], plaintext: &[u8]) -> Vec<u8> {

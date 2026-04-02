@@ -3,7 +3,7 @@ use inquire::Confirm;
 use std::io::IsTerminal;
 
 use crate::cli::RmArgs;
-use crate::fs_helpers::{self, REPO_SECRETS_DIR};
+use crate::config::{self, REPO_SECRETS_DIR};
 
 /// Remove a secret file from both decrypted storage and repo ciphertext.
 ///
@@ -12,10 +12,10 @@ use crate::fs_helpers::{self, REPO_SECRETS_DIR};
 /// Returns an error if repo/config discovery fails, the file cannot be found,
 /// user-selected deletions fail, or user input cannot be read.
 pub fn run(args: &RmArgs) -> Result<()> {
-    let repo_root = fs_helpers::find_repo_root()?;
-    let repo_identifier = fs_helpers::RepoIdentifier::auto_detect()?;
+    let repo_root = config::find_repo_root()?;
+    let repo_identifier = config::repo_identifier(&repo_root)?;
 
-    let decrypted_path = fs_helpers::decrypted_dir(&repo_identifier)?.join(args.file.as_str());
+    let decrypted_path = config::decrypted_dir(&repo_identifier)?.join(args.file.as_str());
     let age_path = repo_root
         .join(REPO_SECRETS_DIR)
         .join(format!("{}.age", args.file));

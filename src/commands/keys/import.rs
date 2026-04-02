@@ -5,8 +5,8 @@ use anyhow::Result;
 use inquire::Password;
 use zeroize::Zeroizing;
 
+use crate::config;
 use crate::crypto::PrivateKey;
-use crate::fs_helpers;
 use crate::keys;
 
 /// Prompt for and import the local private key for the current repository.
@@ -20,8 +20,8 @@ pub fn run() -> Result<()> {
     // the repo identifier. This provides a clear "not in a git repository"
     // error instead of a misleading "Configure an `origin` remote" message
     // when run outside a git checkout.
-    let _repo_root = fs_helpers::find_repo_root()?;
-    let repo_identifier = fs_helpers::RepoIdentifier::auto_detect()?;
+    let repo_root = config::find_repo_root()?;
+    let repo_identifier = config::repo_identifier(&repo_root)?;
 
     println!("Import private key for '{repo_identifier}'");
     println!();

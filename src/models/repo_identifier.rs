@@ -94,11 +94,6 @@ impl RepoIdentifier {
         let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
         Self::from_remote_url(&url)
     }
-
-    /// Auto-detect from the current repository's `origin` remote.
-    pub fn auto_detect() -> Result<Self> {
-        Self::from_origin_git_remote()
-    }
 }
 
 impl TryFrom<String> for RepoIdentifier {

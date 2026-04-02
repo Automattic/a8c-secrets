@@ -2,8 +2,8 @@ use std::io::{self, IsTerminal};
 
 use anyhow::{Context, Result};
 
+use crate::config::{self, REPO_ID_FILE, REPO_SECRETS_DIR};
 use crate::crypto::CryptoEngine;
-use crate::fs_helpers::{self, REPO_SECRETS_DIR};
 use crate::keys;
 use crate::permissions;
 
@@ -21,7 +21,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
         );
     }
 
-    let repo_root = fs_helpers::find_repo_root().context(
+    let repo_root = config::find_repo_root().context(
         "Failed to determine git repository root. Run this command from inside a git checkout.",
     )?;
     let secrets_dir = repo_root.join(REPO_SECRETS_DIR);
@@ -33,8 +33,8 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
         );
     }
 
-    let repo_identifier = fs_helpers::RepoIdentifier::auto_detect()
-        .context("Failed to auto-detect repo identifier from git remote `origin`")?;
+    let repo_identifier = config::RepoIdentifier::from_origin_git_remote()
+        .context("Failed to derive repo identifier from git remote `origin`")?;
 
     // Generate dev and CI key pairs
     let (dev_private, dev_public) = crypto_engine.keygen()?;
@@ -51,11 +51,14 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
         format!("# dev\n{dev_public}\n# ci\n{ci_public}\n"),
     )?;
 
+    config::write_repo_id_file(&repo_root, &repo_identifier)
+        .context("Failed to write repo identifier file")?;
+
     // Save dev private key locally
     let key_path = keys::save_private_key(&repo_identifier, &dev_private)?;
 
     // Create the decrypted files directory
-    let decrypted = fs_helpers::decrypted_dir(&repo_identifier)?;
+    let decrypted = config::decrypted_dir(&repo_identifier)?;
     std::fs::create_dir_all(&decrypted)?;
     permissions::set_secure_dir_permissions(&decrypted)?;
 
@@ -69,6 +72,10 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
         secrets_dir.display()
     );
     println!("  {}  (public keys)", keys_pub_path.display());
+    println!(
+        "  {}  (canonical repo id)",
+        secrets_dir.join(REPO_ID_FILE).display()
+    );
     println!("  {}  (dev private key)", key_path.display());
     println!();
     keys::print_private_key_to_stdout("Dev private key", &dev_private)?;
@@ -86,7 +93,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
         "     Optional — Secret Store entry name for CI: {}",
         keys::secret_store_entry_name(&repo_identifier, true)
     );
-    println!("  3. Commit .a8c-secrets/keys.pub");
+    println!("  3. Commit .a8c-secrets/keys.pub and .a8c-secrets/{REPO_ID_FILE}");
     println!("  4. Add secret files with `a8c-secrets edit <filename>`");
     println!();
     println!("IMPORTANT: Save both private keys now — they cannot be recovered later.");

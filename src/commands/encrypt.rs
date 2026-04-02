@@ -3,8 +3,8 @@ use std::collections::BTreeSet;
 use anyhow::{Context, Result};
 
 use crate::cli::EncryptArgs;
+use crate::config::{self, REPO_SECRETS_DIR, SecretFileName};
 use crate::crypto::CryptoEngine;
-use crate::fs_helpers::{self, REPO_SECRETS_DIR, SecretFileName};
 use crate::keys;
 use zeroize::Zeroizing;
 
@@ -32,13 +32,13 @@ fn collect_missing_decrypted_warnings(
 /// unreadable, required key material is unavailable, encryption fails, or
 /// output files cannot be written.
 pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
-    let repo_root = fs_helpers::find_repo_root()?;
-    let repo_identifier = fs_helpers::RepoIdentifier::auto_detect()?;
+    let repo_root = config::find_repo_root()?;
+    let repo_identifier = config::repo_identifier(&repo_root)?;
 
     let public_keys = keys::load_public_keys(&repo_root)?;
 
     let secrets_dir = repo_root.join(REPO_SECRETS_DIR);
-    let decrypted_dir = fs_helpers::decrypted_dir(&repo_identifier)?;
+    let decrypted_dir = config::decrypted_dir(&repo_identifier)?;
 
     if !decrypted_dir.exists() {
         anyhow::bail!(
@@ -50,7 +50,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
     // Determine which files to consider (validate basenames before existence
     // checks so path-like arguments fail with a clear error, not "file not found")
     let files_to_consider = if args.files.is_empty() {
-        fs_helpers::list_decrypted_files(&repo_identifier)?
+        config::list_decrypted_files(&repo_identifier)?
     } else {
         let mut selected = Vec::new();
         for f in &args.files {
@@ -122,7 +122,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
         // Encrypt
         let existed = age_path.exists();
         let ciphertext = crypto_engine.encrypt(decrypted_content.as_slice(), &public_keys)?;
-        fs_helpers::atomic_write(&age_path, &ciphertext)?;
+        config::atomic_write(&age_path, &ciphertext)?;
         if existed && !args.force {
             println!("  {name} — modified, encrypting");
         } else {
@@ -132,11 +132,10 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
     }
 
     // Check for missing decrypted files (age exists but no plaintext)
-    let age_files = fs_helpers::list_age_files(&repo_root)?;
-    let decrypted_set: BTreeSet<SecretFileName> =
-        fs_helpers::list_decrypted_files(&repo_identifier)?
-            .into_iter()
-            .collect();
+    let age_files = config::list_age_files(&repo_root)?;
+    let decrypted_set: BTreeSet<SecretFileName> = config::list_decrypted_files(&repo_identifier)?
+        .into_iter()
+        .collect();
     let consider_set: BTreeSet<SecretFileName> = files_to_consider.into_iter().collect();
     for name in collect_missing_decrypted_warnings(&age_files, &decrypted_set, &consider_set) {
         eprintln!("  {name} — warning: .age exists but no decrypted plaintext, skipping");
@@ -154,7 +153,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{collect_missing_decrypted_warnings, should_attempt_smart_compare};
-    use crate::fs_helpers::SecretFileName;
+    use crate::config::SecretFileName;
     use std::collections::BTreeSet;
 
     #[test]

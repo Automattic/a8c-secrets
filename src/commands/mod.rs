@@ -5,3 +5,4 @@ pub mod keys;
 pub mod rm;
 pub mod setup;
 pub mod status;
+pub mod which;

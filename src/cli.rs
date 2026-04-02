@@ -128,6 +128,22 @@ private key status, each file as a compact emoji triplet (📝 plaintext · 🔏
 and a legend explaining the rows. Example in-sync row: 📝✅🔏  config.json")]
     Status,
 
+    /// Print path to decrypted secrets directory or a specific decrypted file
+    #[command(
+        long_about = "\
+Print the absolute path to ~/.a8c-secrets/<repo-id>/ for this repository (from .a8c-secrets/repo-id),
+or with a file name, the path to that file under that directory.
+
+Useful for pasting into an IDE open dialog or Xcode/Android build settings (for example:
+`a8c-secrets which Secrets.swift | pbcopy` on macOS). The file path is printed even if the
+file does not exist yet.",
+        after_long_help = "\
+EXAMPLES:
+  a8c-secrets which                    # Directory containing decrypted secrets
+  a8c-secrets which google-services.json"
+    )]
+    Which(WhichArgs),
+
     /// Key management (show, import, rotate)
     Keys(KeysSub),
 
@@ -163,6 +179,12 @@ pub struct EncryptArgs {
 pub struct EditArgs {
     /// Name of the secret file to edit (e.g. "google-services.json")
     pub file: SecretFileName,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct WhichArgs {
+    /// Secret file name; if omitted, print only the decrypted directory path
+    pub file: Option<SecretFileName>,
 }
 
 #[derive(Debug, clap::Args)]
@@ -382,5 +404,28 @@ mod tests {
     fn parse_manual() {
         let cli = parse(&["manual"]).unwrap();
         assert!(matches!(cli.command, Command::Manual));
+    }
+
+    #[test]
+    fn parse_which_no_file() {
+        let cli = parse(&["which"]).unwrap();
+        if let Command::Which(args) = cli.command {
+            assert!(args.file.is_none());
+        } else {
+            panic!("expected Which");
+        }
+    }
+
+    #[test]
+    fn parse_which_with_file() {
+        let cli = parse(&["which", "config.json"]).unwrap();
+        if let Command::Which(args) = cli.command {
+            assert_eq!(
+                args.file,
+                Some(SecretFileName::try_from("config.json").unwrap())
+            );
+        } else {
+            panic!("expected Which");
+        }
     }
 }

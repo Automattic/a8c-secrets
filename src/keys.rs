@@ -7,6 +7,7 @@ use age::secrecy::ExposeSecret;
 use anyhow::{Context, Result};
 use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
+use url::form_urlencoded::Serializer;
 use zeroize::Zeroizing;
 
 use crate::config::{self, REPO_SECRETS_DIR, RepoIdentifier};
@@ -24,6 +25,15 @@ pub fn secret_store_entry_name(repo_identifier: &RepoIdentifier, for_ci: bool) -
     } else {
         format!("a8c-secrets - {name} - dev private key")
     }
+}
+
+/// Secret Store URL with search query preset to the dev or CI private key entry name.
+pub fn secret_store_search_url(repo_identifier: &RepoIdentifier, for_ci: bool) -> String {
+    let search = secret_store_entry_name(repo_identifier, for_ci);
+    let query = Serializer::new(String::new())
+        .append_pair("search", &search)
+        .finish();
+    format!("{SECRET_STORE_BASE_URL}?{query}")
 }
 
 /// Print a titled private key block to stdout.
@@ -277,6 +287,16 @@ mod tests {
         assert_eq!(
             secret_store_entry_name(&repo_identifier, true),
             "a8c-secrets - pocket-casts-android - CI private key"
+        );
+    }
+
+    #[test]
+    fn secret_store_search_url_encodes_dev_entry_query() {
+        let repo_identifier =
+            RepoIdentifier::try_from("wordpress-ios@github.com@automattic".to_string()).unwrap();
+        assert_eq!(
+            secret_store_search_url(&repo_identifier, false),
+            "https://mc.a8c.com/secret-store/?search=a8c-secrets+-+wordpress-ios+-+dev+private+key"
         );
     }
 

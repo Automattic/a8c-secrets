@@ -115,6 +115,10 @@ fn print_confirmation_plan(
             " - Update the Secret Store entry \"{}\" with the new private key",
             keys::secret_store_entry_name(repo_identifier, false)
         );
+        println!(
+            "   {}",
+            keys::secret_store_search_url(repo_identifier, false)
+        );
         println!("   (Username field: {repo_identifier})");
         println!(" - Notify the team to run `a8c-secrets keys import` where needed");
         println!(" - Commit the changes under `.a8c-secrets/` (e.g. keys.pub and *.age files)");
@@ -122,6 +126,10 @@ fn print_confirmation_plan(
         println!(
             " - Update the Secret Store entry \"{}\" with the new private key",
             keys::secret_store_entry_name(repo_identifier, true)
+        );
+        println!(
+            "   {}",
+            keys::secret_store_search_url(repo_identifier, true)
         );
         println!("   (Username field: {repo_identifier})");
         println!(

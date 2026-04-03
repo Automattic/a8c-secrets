@@ -1092,6 +1092,60 @@ fn keys_import_writes_private_key_from_stdin() {
 }
 
 #[test]
+fn keys_import_refuses_replace_when_stdin_not_tty() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_dir = temp.path().join("repo");
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&repo_dir).unwrap();
+    fs::create_dir_all(&home_dir).unwrap();
+
+    let repo_name = "demo-repo";
+    git_init_with_origin(&repo_dir, repo_name);
+
+    let dev_identity = age::x25519::Identity::generate();
+    let ci_identity = age::x25519::Identity::generate();
+    write_keys_pub(
+        &repo_dir,
+        &dev_identity.to_public().to_string(),
+        &ci_identity.to_public().to_string(),
+    );
+
+    let key_path = local_key_path(&home_dir, repo_name);
+    fs::create_dir_all(key_path.parent().unwrap()).unwrap();
+    let prior = "existing key placeholder\n";
+    fs::write(&key_path, prior).unwrap();
+
+    let new_key = dev_identity.to_string().expose_secret().to_string();
+
+    let mut child = std::process::Command::new(cargo_bin_exe())
+        .current_dir(&repo_dir)
+        .env("A8C_SECRETS_HOME", secrets_home(&home_dir))
+        .args(["keys", "import"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn keys import");
+
+    if let Some(mut stdin) = child.stdin.take() {
+        writeln!(stdin, "{new_key}").unwrap();
+    }
+
+    let out = child.wait_with_output().expect("wait on keys import");
+    assert!(
+        !out.status.success(),
+        "keys import should refuse to replace without interactive terminal"
+    );
+    let combined =
+        String::from_utf8_lossy(&out.stderr).to_string() + &String::from_utf8_lossy(&out.stdout);
+    assert!(
+        combined.contains("already exists") && combined.contains("interactive terminal"),
+        "expected replace guard message, got: {combined}"
+    );
+    assert_eq!(fs::read_to_string(&key_path).unwrap(), prior);
+}
+
+#[test]
 fn decrypt_non_interactive_removes_orphan_decrypted_files() {
     let temp = tempfile::tempdir().unwrap();
     let repo_dir = temp.path().join("repo");

@@ -62,7 +62,7 @@ GETTING STARTED
     2. Developer onboarding:
 
         cd my-repo
-        a8c-secrets keys import   # Paste the dev private key from Secret Store when prompted
+        a8c-secrets keys import   # Paste the dev private key (confirms if replacing an existing file)
         a8c-secrets decrypt
 
     3. Daily workflow:
@@ -105,7 +105,7 @@ COMMANDS
 
     Key management:
         keys show                         Display key paths and keys.pub recipients
-        keys import                       Import private key from Secret Store
+        keys import                       Import private key from Secret Store (confirms if replacing)
         keys rotate                       Rotate one keys.pub recipient (interactive); re-encrypt .age from ~/.a8c-secrets plaintext
 
     Setup:

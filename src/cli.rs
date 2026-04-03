@@ -241,8 +241,10 @@ Import a dev private key from the Automattic Secret Store.
 
 Prompts you to paste the private key string (AGE-SECRET-KEY-...) and saves
 it under ~/.a8c-secrets/keys/ using the path layout from `.a8c-secrets/repo-id`
-(the repository segment gets a `.key` suffix; mode 0600). Overwrites any existing
-key for this repo identifier.")]
+(the repository segment gets a `.key` suffix; mode 0600).
+
+If a key file for this repo already exists, you must confirm replacing it (interactive
+terminal only). For key rotation, use `keys rotate` instead of `keys import`.")]
     Import,
 
     /// Generate a new key pair and re-encrypt all files

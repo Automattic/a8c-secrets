@@ -535,6 +535,92 @@ fn edit_rejects_traversal_in_filename() {
 }
 
 #[test]
+fn edit_without_file_requires_terminal_stdio() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_dir = temp.path().join("repo");
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&repo_dir).unwrap();
+    fs::create_dir_all(&home_dir).unwrap();
+
+    git_init_with_origin(&repo_dir, "demo-repo");
+    let dev_identity = age::x25519::Identity::generate();
+    let ci_identity = age::x25519::Identity::generate();
+    write_keys_pub(
+        &repo_dir,
+        &dev_identity.to_public().to_string(),
+        &ci_identity.to_public().to_string(),
+    );
+
+    let out = std::process::Command::new(cargo_bin_exe())
+        .current_dir(&repo_dir)
+        .env(
+            "A8C_SECRETS_HOME",
+            secrets_home(&home_dir).to_str().expect("home utf8"),
+        )
+        .args(["edit"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("spawn edit without file");
+
+    assert!(
+        !out.status.success(),
+        "edit without file should fail when stdio is not a terminal"
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let combined = stderr.to_string() + stdout.as_ref();
+    assert!(
+        combined.contains("terminal") || combined.contains("interactive"),
+        "expected terminal / interactive requirement in output, got: {combined}"
+    );
+}
+
+#[test]
+fn edit_with_file_requires_terminal_stdio() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_dir = temp.path().join("repo");
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&repo_dir).unwrap();
+    fs::create_dir_all(&home_dir).unwrap();
+
+    git_init_with_origin(&repo_dir, "demo-repo");
+    let dev_identity = age::x25519::Identity::generate();
+    let ci_identity = age::x25519::Identity::generate();
+    write_keys_pub(
+        &repo_dir,
+        &dev_identity.to_public().to_string(),
+        &ci_identity.to_public().to_string(),
+    );
+
+    let out = std::process::Command::new(cargo_bin_exe())
+        .current_dir(&repo_dir)
+        .env(
+            "A8C_SECRETS_HOME",
+            secrets_home(&home_dir).to_str().expect("home utf8"),
+        )
+        .args(["edit", "note.txt"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("spawn edit with file");
+
+    assert!(
+        !out.status.success(),
+        "edit with file should fail when stdio is not a terminal"
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let combined = stderr.to_string() + stdout.as_ref();
+    assert!(
+        combined.contains("terminal") || combined.contains("interactive"),
+        "expected terminal / interactive requirement in output, got: {combined}"
+    );
+}
+
+#[test]
 fn status_succeeds_for_configured_repo() {
     let temp = tempfile::tempdir().unwrap();
     let repo_dir = temp.path().join("repo");
@@ -1380,56 +1466,4 @@ fn rm_fails_without_non_interactive_flag_when_not_tty() {
         "decrypted file should remain on failed rm"
     );
     assert!(age_path.exists(), ".age file should remain on failed rm");
-}
-
-#[cfg(unix)]
-#[test]
-fn edit_end_to_end_invokes_editor_and_writes_age() {
-    use std::os::unix::fs::PermissionsExt;
-
-    let temp = tempfile::tempdir().unwrap();
-    let repo_dir = temp.path().join("repo");
-    let home_dir = temp.path().join("home");
-    fs::create_dir_all(&repo_dir).unwrap();
-    fs::create_dir_all(&home_dir).unwrap();
-
-    let repo_name = "demo-repo";
-    git_init_with_origin(&repo_dir, repo_name);
-
-    let dev_identity = age::x25519::Identity::generate();
-    let ci_identity = age::x25519::Identity::generate();
-    let dev_public = dev_identity.to_public().to_string();
-    let ci_public = ci_identity.to_public().to_string();
-    write_keys_pub(&repo_dir, &dev_public, &ci_public);
-
-    let decrypted_dir = secrets_home(&home_dir).join(repo_identifier(repo_name));
-    fs::create_dir_all(&decrypted_dir).unwrap();
-    fs::write(decrypted_dir.join("note.txt"), b"before-edit\n").unwrap();
-
-    let editor = temp.path().join("fake-editor.sh");
-    fs::write(&editor, "#!/bin/sh\nprintf '%s\\n' 'after-edit' > \"$1\"\n").unwrap();
-    fs::set_permissions(&editor, fs::Permissions::from_mode(0o755)).unwrap();
-
-    configured_command(&repo_dir, &home_dir)
-        .env("EDITOR", editor.to_str().unwrap())
-        .args(["edit", "note.txt"])
-        .assert()
-        .success();
-
-    assert_eq!(
-        fs::read_to_string(decrypted_dir.join("note.txt"))
-            .unwrap()
-            .trim(),
-        "after-edit"
-    );
-    let age_path = repo_dir.join(".a8c-secrets/note.txt.age");
-    assert!(age_path.exists(), ".age file should be written after edit");
-    let ct = fs::read(&age_path).unwrap();
-    let decryptor = age::Decryptor::new(&ct[..]).unwrap();
-    let mut r = decryptor
-        .decrypt(std::iter::once(&dev_identity as &dyn age::Identity))
-        .unwrap();
-    let mut got = Vec::new();
-    r.read_to_end(&mut got).unwrap();
-    assert_eq!(got, b"after-edit\n");
 }

@@ -1,10 +1,11 @@
+use std::io::{self, IsTerminal};
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use inquire::Confirm;
+use inquire::{Confirm, Select};
 
 use crate::cli::EditArgs;
-use crate::config::{self, REPO_SECRETS_DIR};
+use crate::config::{self, REPO_SECRETS_DIR, SecretFileName};
 use crate::crypto::CryptoEngine;
 use crate::keys;
 use crate::permissions;
@@ -18,8 +19,77 @@ fn default_editor() -> String {
     }
 }
 
-/// Build a process command from an `EDITOR`-style string: executable plus optional arguments,
-/// parsed like POSIX shell words (so `code --wait` or `"Path With Spaces/editor"` work).
+fn resolved_editor_spec() -> String {
+    std::env::var("EDITOR")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(default_editor)
+}
+
+fn require_edit_tty() -> Result<()> {
+    if io::stdin().is_terminal() && io::stdout().is_terminal() {
+        return Ok(());
+    }
+    anyhow::bail!(
+        "`a8c-secrets edit` is interactive only: stdin and stdout must be connected to a terminal. Run it from a real terminal."
+    );
+}
+
+/// Shown below interactive `edit` prompts (`Select` / `Confirm`, inquire help line).
+const EDITOR_TRUST_HELP: &str = "Only continue if you trust this EDITOR command, as it will see the decrypted file contents and might leak it. When in doubt, decline and set EDITOR to a program you trust before trying again.";
+
+fn resolve_secret_to_edit(
+    repo_identifier: &config::RepoIdentifier,
+    args: &EditArgs,
+    editor_spec: &str,
+) -> Result<SecretFileName> {
+    if let Some(file) = args.file.clone() {
+        return Ok(file);
+    }
+
+    let names = config::list_decrypted_files(repo_identifier)?;
+    if names.is_empty() {
+        anyhow::bail!(
+            "No decrypted secret files found. Run `decrypt` first, or create a secret by name with `a8c-secrets edit <file>`."
+        );
+    }
+
+    let message = format!("Select the secret file to edit with EDITOR `{editor_spec}`");
+    Select::new(&message, names)
+        .with_help_message(EDITOR_TRUST_HELP)
+        .prompt()
+        .map_err(|e| anyhow::anyhow!(e))
+}
+
+/// When the secret name is given on the command line: confirm edit vs create, and warn about EDITOR.
+fn confirm_cli_edit_session(
+    file: &SecretFileName,
+    editor_spec: &str,
+    creating: bool,
+) -> Result<()> {
+    let prompt = if creating {
+        format!("Create new secret file '{file}' then open it in EDITOR `{editor_spec}`?")
+    } else {
+        format!("Edit existing secret file '{file}' in EDITOR `{editor_spec}`?")
+    };
+    if !Confirm::new(&prompt)
+        .with_help_message(EDITOR_TRUST_HELP)
+        .with_default(false)
+        .prompt()
+        .map_err(|e| anyhow::anyhow!(e))?
+    {
+        anyhow::bail!("Aborted.");
+    }
+    Ok(())
+}
+
+fn err_decrypted_path_not_regular_file(file: &SecretFileName) -> anyhow::Error {
+    anyhow::anyhow!(
+        "Decrypted path for '{file}' exists but is not a regular file (for example a directory). Remove or rename it, then retry."
+    )
+}
+
 fn command_for_editor(editor: &str, file: &Path) -> Result<std::process::Command> {
     let words = shell_words::split(editor).map_err(|e| anyhow::anyhow!("Invalid EDITOR: {e}"))?;
     let (program, args) = words
@@ -38,40 +108,55 @@ fn command_for_editor(editor: &str, file: &Path) -> Result<std::process::Command
 /// # Errors
 ///
 /// Returns an error if repo/config discovery fails, file IO fails, launching
-/// the editor fails, the editor exits unsuccessfully, or encryption/write
-/// operations fail. Prompts (for example creating a new file) assume stdin is a
-/// terminal; otherwise use another editor on the decrypted file, then run `encrypt`.
+/// the editor fails, the editor exits unsuccessfully, encryption/write
+/// operations fail, or the decrypted path exists but is not a regular file (e.g. a directory).
+/// Requires a terminal for stdin and stdout. The file picker and the CLI-path
+/// create-or-edit step both surface the resolved `EDITOR` and trust guidance; with a name on the
+/// command line you must confirm create vs edit before the editor runs.
 pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
     let repo_root = config::find_repo_root()?;
     let repo_identifier = config::repo_identifier(&repo_root)?;
+    require_edit_tty()?;
+    let editor_spec = resolved_editor_spec();
+    let explicit_cli_file = args.file.is_some();
+    let file = resolve_secret_to_edit(&repo_identifier, args, &editor_spec)?;
     let public_keys = keys::load_public_keys(&repo_root)?;
 
     let decrypted_dir = config::decrypted_dir(&repo_identifier)?;
     std::fs::create_dir_all(&decrypted_dir)?;
     permissions::set_secure_dir_permissions(&decrypted_dir)?;
-    let decrypted_path = decrypted_dir.join(args.file.as_str());
+    let decrypted_path = decrypted_dir.join(file.as_str());
 
-    // If file doesn't exist, prompt to create
-    if !decrypted_path.exists() {
-        if !Confirm::new(&format!("'{}' does not exist. Create it?", args.file))
-            .with_default(false)
-            .prompt()
-            .map_err(|e| anyhow::anyhow!(e))?
-        {
-            anyhow::bail!("Aborted.");
+    if explicit_cli_file {
+        let creating = if decrypted_path.is_file() {
+            false
+        } else if !decrypted_path.exists() {
+            true
+        } else {
+            return Err(err_decrypted_path_not_regular_file(&file));
+        };
+        confirm_cli_edit_session(&file, &editor_spec, creating)?;
+        if creating {
+            if decrypted_path.is_file() {
+                anyhow::bail!(
+                    "Secret file '{file}' appeared while confirming. Run `a8c-secrets edit {file}` again to edit it."
+                );
+            }
+            if decrypted_path.exists() {
+                return Err(err_decrypted_path_not_regular_file(&file));
+            }
+            std::fs::write(&decrypted_path, "")?;
+            permissions::set_secure_file_permissions(&decrypted_path)?;
         }
-        std::fs::write(&decrypted_path, "")?;
-        permissions::set_secure_file_permissions(&decrypted_path)?;
+    } else if !decrypted_path.is_file() {
+        if decrypted_path.exists() {
+            return Err(err_decrypted_path_not_regular_file(&file));
+        }
+        anyhow::bail!("Decrypted file '{file}' is missing under the secrets home.");
     }
 
     let before = Zeroizing::new(std::fs::read(&decrypted_path)?);
 
-    // Open in $EDITOR (split into program + args; see `command_for_editor`)
-    let editor_spec = std::env::var("EDITOR")
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(default_editor);
     let status = command_for_editor(&editor_spec, &decrypted_path)?
         .status()
         .with_context(|| format!("Failed to launch editor: {editor_spec}"))?;
@@ -94,11 +179,11 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
     let ciphertext = crypto_engine.encrypt(after.as_slice(), &public_keys)?;
     let age_path = repo_root
         .join(REPO_SECRETS_DIR)
-        .join(format!("{}.age", args.file));
+        .join(format!("{}.age", file.as_str()));
     config::atomic_write(&age_path, &ciphertext)?;
 
-    println!("Encrypted {}", args.file);
-    println!("Remember to commit {}/{}.age", REPO_SECRETS_DIR, args.file);
+    println!("Encrypted {file}");
+    println!("Remember to commit {REPO_SECRETS_DIR}/{file}.age");
 
     Ok(())
 }

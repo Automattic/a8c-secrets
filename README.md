@@ -44,7 +44,8 @@ a8c-secrets decrypt
 
 ```sh
 a8c-secrets decrypt          # Get latest secrets after git pull
-a8c-secrets edit config.json # Edit a secret, auto-encrypts on save
+a8c-secrets edit              # Pick from existing decrypted secrets (terminal only)
+a8c-secrets edit config.json  # Edit or create by name; confirm before editor; auto-encrypts on save
 a8c-secrets encrypt          # Encrypt any modified files
 a8c-secrets status           # Show encryption/decryption status of each secret file for validation
 git add .a8c-secrets/        # Commit encrypted changes
@@ -116,7 +117,7 @@ Use `decrypt --non-interactive` in CI with `A8C_SECRETS_IDENTITY` (or a key file
 - **`setup init`** and **`keys rotate`** require **stdout** connected to a terminal so new private keys are not accidentally written to a file or pipe. `keys rotate` also needs **stdin** for its menus and confirmations.
 - **`setup nuke`** requires **stdout** and **stdin** connected to a terminal (you must see the destructive summary before confirming). **`rm`** (without `--non-interactive`) requires **stdin** for confirmation prompts.
 - **`decrypt`** orphan handling uses **stdin** for the orphan prompt (unless `--non-interactive` is set or stdin is not an interactive terminal — see above).
-- **`edit`** is for interactive use (`$EDITOR`, optional create prompt).
+- **`edit`** is for interactive use only: stdin and stdout must be a terminal. **Without a file name**, you pick from existing decrypted secrets (run `decrypt` first if none); the picker shows the resolved `$EDITOR` and trust guidance. **With a file name**, you confirm editing or creating that secret before `$EDITOR` runs, with the same trust guidance. New secrets are created with `a8c-secrets edit <file>`.
 
 ## Key rotation
 

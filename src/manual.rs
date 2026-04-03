@@ -48,7 +48,7 @@ REPO IDENTIFIER (repo-id)
 
 SECRET FILE NAMES
     Use one path segment per secret (e.g. Secrets.swift), not a relative path.
-    Commands that take a secret name (edit, encrypt with explicit files, rm)
+    Commands that take a secret name (edit with a file argument, encrypt with explicit files, rm)
     reject paths, .., and directory separators so files stay under the
     intended directories.
 
@@ -67,10 +67,11 @@ GETTING STARTED
 
     3. Daily workflow:
 
-        a8c-secrets decrypt          # Get latest secrets after git pull
-        a8c-secrets edit config.json # Edit a secret, auto-encrypts on save
-        a8c-secrets encrypt          # Encrypt any modified files
-        git add .a8c-secrets/        # Commit encrypted changes (and repo-id / keys.pub when they change)
+        a8c-secrets decrypt           # Get latest secrets after git pull
+        a8c-secrets edit              # Pick among existing decrypted files (TTY only); use `edit <file>` to create a new one
+        a8c-secrets edit config.json  # Edit or create by name; confirm before editor (trust EDITOR)
+        a8c-secrets encrypt           # Encrypt any modified files
+        git add .a8c-secrets/         # Commit encrypted changes (and repo-id / keys.pub when they change)
 
     decrypt never prompts for a private key; run keys import first (or set
     A8C_SECRETS_IDENTITY in CI).
@@ -85,7 +86,10 @@ GETTING STARTED
     are printed; do not redirect). keys rotate also needs stdin for prompts. setup
     nuke needs stdout and stdin (see the destructive summary before typing the repo id).
     rm (without --non-interactive) needs stdin for confirmation. edit uses
-    $EDITOR and prompts; intended for interactive use.
+    $EDITOR and prompts; it requires stdin and stdout on a terminal (interactive
+    only). The file picker (no argument) and the confirmation when you pass a name
+    both show which EDITOR will run and the same trust guidance; with a name on the
+    command line you must also confirm creating or editing that file before the editor runs.
 
     If stdout is not a terminal, private key blocks are redacted in output (defense in
     depth); still run init/rotate in a real terminal to copy keys.
@@ -94,7 +98,7 @@ COMMANDS
     Daily operations:
         decrypt [--non-interactive]       Decrypt .age files to ~/.a8c-secrets/<repo@host@org>/
         encrypt [file ...] [--force]      Encrypt modified secrets back to .age
-        edit <file>                       Open in $EDITOR, encrypt if changed (interactive; prompts require TTY)
+        edit [file]                       Open in $EDITOR, encrypt if changed; TTY; omit file to pick existing; pass file to create/edit by name
         rm <file>                         Remove secret (plaintext + .age)
         status                            Show sync state of all files
         which [file]                      Print decrypted dir path, or file path (file must exist)

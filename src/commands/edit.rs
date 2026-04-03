@@ -88,6 +88,13 @@ fn confirm_cli_edit_session(
     Ok(())
 }
 
+fn err_decrypted_path_not_regular_file(file: &SecretFileName) -> anyhow::Error {
+    anyhow::anyhow!(
+        "Decrypted path for '{file}' exists but is not a regular file (for example a directory). \
+         Remove or rename it, then retry."
+    )
+}
+
 fn command_for_editor(editor: &str, file: &Path) -> Result<std::process::Command> {
     let words = shell_words::split(editor).map_err(|e| anyhow::anyhow!("Invalid EDITOR: {e}"))?;
     let (program, args) = words
@@ -106,8 +113,9 @@ fn command_for_editor(editor: &str, file: &Path) -> Result<std::process::Command
 /// # Errors
 ///
 /// Returns an error if repo/config discovery fails, file IO fails, launching
-/// the editor fails, the editor exits unsuccessfully, or encryption/write
-/// operations fail. Requires a terminal for stdin and stdout. The file picker and the CLI-path
+/// the editor fails, the editor exits unsuccessfully, encryption/write
+/// operations fail, or the decrypted path exists but is not a regular file (e.g. a directory).
+/// Requires a terminal for stdin and stdout. The file picker and the CLI-path
 /// create-or-edit step both surface the resolved `EDITOR` and trust guidance; with a name on the
 /// command line you must confirm create vs edit before the editor runs.
 pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
@@ -125,13 +133,30 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
     let decrypted_path = decrypted_dir.join(file.as_str());
 
     if explicit_cli_file {
-        let creating = !decrypted_path.exists();
+        let creating = if decrypted_path.is_file() {
+            false
+        } else if !decrypted_path.exists() {
+            true
+        } else {
+            return Err(err_decrypted_path_not_regular_file(&file));
+        };
         confirm_cli_edit_session(&file, &editor_spec, creating)?;
         if creating {
+            if decrypted_path.is_file() {
+                anyhow::bail!(
+                    "Secret file '{file}' appeared while confirming. Run `a8c-secrets edit {file}` again to edit it."
+                );
+            }
+            if decrypted_path.exists() {
+                return Err(err_decrypted_path_not_regular_file(&file));
+            }
             std::fs::write(&decrypted_path, "")?;
             permissions::set_secure_file_permissions(&decrypted_path)?;
         }
-    } else if !decrypted_path.exists() {
+    } else if !decrypted_path.is_file() {
+        if decrypted_path.exists() {
+            return Err(err_decrypted_path_not_regular_file(&file));
+        }
         anyhow::bail!("Decrypted file '{file}' is missing under the secrets home.");
     }
 

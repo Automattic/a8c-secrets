@@ -1115,21 +1115,17 @@ fn keys_import_refuses_replace_when_stdin_not_tty() {
     let prior = "existing key placeholder\n";
     fs::write(&key_path, prior).unwrap();
 
-    let new_key = dev_identity.to_string().expose_secret().to_string();
-
-    let mut child = std::process::Command::new(cargo_bin_exe())
+    let child = std::process::Command::new(cargo_bin_exe())
         .current_dir(&repo_dir)
         .env("A8C_SECRETS_HOME", secrets_home(&home_dir))
         .args(["keys", "import"])
-        .stdin(Stdio::piped())
+        // Non-TTY stdin; the command bails before reading. Avoid a piped stdin + write,
+        // which can race with early exit and trigger BrokenPipe.
+        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .expect("spawn keys import");
-
-    if let Some(mut stdin) = child.stdin.take() {
-        writeln!(stdin, "{new_key}").unwrap();
-    }
 
     let out = child.wait_with_output().expect("wait on keys import");
     assert!(

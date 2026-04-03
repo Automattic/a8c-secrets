@@ -50,8 +50,8 @@ pub fn run() -> Result<()> {
     println!("Import private key for '{repo_identifier}'");
     println!();
     println!(
-        "Get the dev private key from Secret Store ({})",
-        keys::SECRET_STORE_BASE_URL
+        "Get the dev private key from Secret Store:\n  {}",
+        keys::secret_store_search_url(&repo_identifier, false)
     );
     println!(
         "  Entry name    : \"{}\"",

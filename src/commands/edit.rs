@@ -19,6 +19,14 @@ fn default_editor() -> String {
     }
 }
 
+fn resolved_editor_spec() -> String {
+    std::env::var("EDITOR")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(default_editor)
+}
+
 fn require_edit_tty() -> Result<()> {
     if io::stdin().is_terminal() && io::stdout().is_terminal() {
         return Ok(());
@@ -29,9 +37,15 @@ fn require_edit_tty() -> Result<()> {
     );
 }
 
+/// Shown below interactive `edit` prompts (`Select` / `Confirm`, inquire help line).
+const EDITOR_TRUST_HELP: &str = "Only continue if you trust this EDITOR command, as it will see the decrypted \
+    file contents and might leak it. When in doubt, decline and set EDITOR to a program you trust before \
+    trying again.";
+
 fn resolve_secret_to_edit(
     repo_identifier: &config::RepoIdentifier,
     args: &EditArgs,
+    editor_spec: &str,
 ) -> Result<SecretFileName> {
     if let Some(file) = args.file.clone() {
         return Ok(file);
@@ -45,7 +59,9 @@ fn resolve_secret_to_edit(
         );
     }
 
-    Select::new("Which secret do you want to edit?", names)
+    let message = format!("Select the secret file to edit with EDITOR `{editor_spec}`");
+    Select::new(&message, names)
+        .with_help_message(EDITOR_TRUST_HELP)
         .prompt()
         .map_err(|e| anyhow::anyhow!(e))
 }
@@ -56,18 +72,13 @@ fn confirm_cli_edit_session(
     editor_spec: &str,
     creating: bool,
 ) -> Result<()> {
-    let lead = if creating {
-        format!(
-            "Create new secret '{file}' (starts empty), then open it in EDITOR `{editor_spec}`?"
-        )
+    let prompt = if creating {
+        format!("Create new secret file '{file}' then open it in EDITOR `{editor_spec}`?")
     } else {
-        format!("Edit existing secret '{file}' in EDITOR `{editor_spec}`?")
+        format!("Edit existing secret file '{file}' in EDITOR `{editor_spec}`?")
     };
-    let msg = format!(
-        "{lead}\nOnly continue if you trust this command, as it will see the decrypted file contents \
-         and might leak it. When in doubt, decline and set EDITOR to a program you trust before trying again."
-    );
-    if !Confirm::new(&msg)
+    if !Confirm::new(&prompt)
+        .with_help_message(EDITOR_TRUST_HELP)
         .with_default(false)
         .prompt()
         .map_err(|e| anyhow::anyhow!(e))?
@@ -96,26 +107,22 @@ fn command_for_editor(editor: &str, file: &Path) -> Result<std::process::Command
 ///
 /// Returns an error if repo/config discovery fails, file IO fails, launching
 /// the editor fails, the editor exits unsuccessfully, or encryption/write
-/// operations fail. Requires a terminal for stdin and stdout. If you pass the secret name on the
-/// command line, you must confirm (create vs edit) before the editor runs.
+/// operations fail. Requires a terminal for stdin and stdout. The file picker and the CLI-path
+/// create-or-edit step both surface the resolved `EDITOR` and trust guidance; with a name on the
+/// command line you must confirm create vs edit before the editor runs.
 pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
     let repo_root = config::find_repo_root()?;
     let repo_identifier = config::repo_identifier(&repo_root)?;
     require_edit_tty()?;
+    let editor_spec = resolved_editor_spec();
     let explicit_cli_file = args.file.is_some();
-    let file = resolve_secret_to_edit(&repo_identifier, args)?;
+    let file = resolve_secret_to_edit(&repo_identifier, args, &editor_spec)?;
     let public_keys = keys::load_public_keys(&repo_root)?;
 
     let decrypted_dir = config::decrypted_dir(&repo_identifier)?;
     std::fs::create_dir_all(&decrypted_dir)?;
     permissions::set_secure_dir_permissions(&decrypted_dir)?;
     let decrypted_path = decrypted_dir.join(file.as_str());
-
-    let editor_spec = std::env::var("EDITOR")
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(default_editor);
 
     if explicit_cli_file {
         let creating = !decrypted_path.exists();

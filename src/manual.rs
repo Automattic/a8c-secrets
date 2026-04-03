@@ -87,9 +87,9 @@ GETTING STARTED
     nuke needs stdout and stdin (see the destructive summary before typing the repo id).
     rm (without --non-interactive) needs stdin for confirmation. edit uses
     $EDITOR and prompts; it requires stdin and stdout on a terminal (interactive
-    only). If you pass the secret name on the command line, you must confirm
-    editing or creating it before the editor runs, and only continue if you
-    trust EDITOR. With no file argument you choose from existing decrypted files only.
+    only). The file picker (no argument) and the confirmation when you pass a name
+    both show which EDITOR will run and the same trust guidance; with a name on the
+    command line you must also confirm creating or editing that file before the editor runs.
 
     If stdout is not a terminal, private key blocks are redacted in output (defense in
     depth); still run init/rotate in a real terminal to copy keys.

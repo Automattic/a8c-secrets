@@ -108,9 +108,10 @@ If the file doesn't exist, you are prompted to confirm creating it (when the nam
 Without a file name: lists existing decrypted secrets to choose from (run `decrypt` first). To create
 a new secret, pass its name: `a8c-secrets edit <file>`.
 
-Requires stdin and stdout connected to a terminal (interactive use only). When you pass the secret name
-on the command line, you must confirm editing or creating it before $EDITOR runs, including a warning to
-only continue if you trust EDITOR. Picking a secret from the list does not repeat that prompt.",
+Requires stdin and stdout connected to a terminal (interactive use only). The picker (no file argument)
+and the create-or-edit confirmation (file on the command line) both show the resolved EDITOR command and
+the same trust guidance; with a file name you must also confirm creating or editing that secret before
+the editor starts.",
         after_long_help = "\
 EXAMPLES:
   a8c-secrets edit                        # Pick among existing decrypted secrets (TTY only)

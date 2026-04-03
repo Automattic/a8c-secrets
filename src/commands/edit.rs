@@ -32,15 +32,12 @@ fn require_edit_tty() -> Result<()> {
         return Ok(());
     }
     anyhow::bail!(
-        "`a8c-secrets edit` is interactive only: stdin and stdout must be connected to a terminal. \
-         Run it from a real terminal."
+        "`a8c-secrets edit` is interactive only: stdin and stdout must be connected to a terminal. Run it from a real terminal."
     );
 }
 
 /// Shown below interactive `edit` prompts (`Select` / `Confirm`, inquire help line).
-const EDITOR_TRUST_HELP: &str = "Only continue if you trust this EDITOR command, as it will see the decrypted \
-    file contents and might leak it. When in doubt, decline and set EDITOR to a program you trust before \
-    trying again.";
+const EDITOR_TRUST_HELP: &str = "Only continue if you trust this EDITOR command, as it will see the decrypted file contents and might leak it. When in doubt, decline and set EDITOR to a program you trust before trying again.";
 
 fn resolve_secret_to_edit(
     repo_identifier: &config::RepoIdentifier,
@@ -54,8 +51,7 @@ fn resolve_secret_to_edit(
     let names = config::list_decrypted_files(repo_identifier)?;
     if names.is_empty() {
         anyhow::bail!(
-            "No decrypted secret files found. Run `decrypt` first, or create a secret by name with \
-             `a8c-secrets edit <file>`."
+            "No decrypted secret files found. Run `decrypt` first, or create a secret by name with `a8c-secrets edit <file>`."
         );
     }
 
@@ -90,8 +86,7 @@ fn confirm_cli_edit_session(
 
 fn err_decrypted_path_not_regular_file(file: &SecretFileName) -> anyhow::Error {
     anyhow::anyhow!(
-        "Decrypted path for '{file}' exists but is not a regular file (for example a directory). \
-         Remove or rename it, then retry."
+        "Decrypted path for '{file}' exists but is not a regular file (for example a directory). Remove or rename it, then retry."
     )
 }
 

@@ -156,6 +156,36 @@ make test          # Run tests
 make build-release # Build release binary
 ```
 
+## Releasing a new version
+
+1. **Create a release branch** from `main`:
+   ```sh
+   git checkout main && git pull
+   git checkout -b release/x.y.z
+   ```
+2. **Bump the version** in `Cargo.toml` (the only place that needs a manual edit):
+   ```toml
+   version = "x.y.z"
+   ```
+3. **Run `cargo check`** (or `cargo build`) to validate the binary compiles and to update `Cargo.lock` with the new version.
+4. **Commit, push, and open a PR** against `main`:
+   ```sh
+   git add Cargo.toml Cargo.lock
+   git commit -m "Bump version to x.y.z"
+   git push -u origin release/x.y.z
+   ```
+5. **Get the PR reviewed and merged** into `main`.
+6. **Tag the merge commit on `main`** and push the tag:
+   ```sh
+   git checkout main && git pull
+   git tag x.y.z
+   git push origin x.y.z
+   ```
+   Buildkite CI will automatically build the release binaries and create the GitHub Release for the pushed tag.
+
+> [!NOTE]
+> The `install.sh` script, clap's `--version` flag, and `Cargo.lock` all derive the version automatically — `Cargo.toml` is the single source of truth.
+
 ## References
 
 - [`age` specification](https://age-encryption.org/v1)

@@ -49,13 +49,15 @@ pub fn run() -> Result<()> {
 
     println!("Import private key for '{repo_identifier}'");
     println!();
-    println!("Get the dev private key from Secret Store:");
     println!(
-        "  {}  (look for: {})",
-        keys::SECRET_STORE_BASE_URL,
+        "Get the dev private key from Secret Store ({})",
+        keys::SECRET_STORE_BASE_URL
+    );
+    println!(
+        "  Entry name    : \"{}\"",
         keys::secret_store_entry_name(&repo_identifier, false)
     );
-    println!("  Entry Username field should match: {repo_identifier}");
+    println!("  Username field: \"{repo_identifier}\"");
     println!();
 
     // Use hidden input when stdin is a TTY (no key material is echoed). If stdin is

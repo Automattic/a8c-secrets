@@ -198,6 +198,26 @@ pub fn load_public_keys(repo_root: &Path) -> Result<Vec<PublicKey>> {
     Ok(out)
 }
 
+/// Save dev and CI public recipients to `.a8c-secrets/keys.pub`.
+///
+/// The format matches what [`load_public_keys`] expects: comment lines (`# dev`, `# ci`) and
+/// one age public key per section.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be written.
+pub fn save_public_keys(
+    repo_root: &Path,
+    dev_public: &PublicKey,
+    ci_public: &PublicKey,
+) -> Result<()> {
+    let path = public_keys_path(repo_root);
+    let content = format!("# dev\n{dev_public}\n# ci\n{ci_public}\n");
+    std::fs::write(&path, content.as_bytes())
+        .with_context(|| format!("Failed to write {}", path.display()))?;
+    Ok(())
+}
+
 /// Replace every recipient line in `keys.pub` whose trimmed value equals
 /// `old_public` with `new_public`.
 ///

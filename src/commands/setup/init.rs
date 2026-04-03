@@ -28,7 +28,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
 
     if secrets_dir.exists() {
         anyhow::bail!(
-            "Already initialized: {} exists.\nRun `a8c-secrets setup nuke` first to reinitialize.",
+            "Already initialized: {} exists.\nRun `a8c-secrets setup nuke` first if you really want to reinitialize.",
             secrets_dir.display()
         );
     }
@@ -46,10 +46,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
 
     // Write keys.pub
     let keys_pub_path = keys::public_keys_path(&repo_root);
-    std::fs::write(
-        &keys_pub_path,
-        format!("# dev\n{dev_public}\n# ci\n{ci_public}\n"),
-    )?;
+    keys::save_public_keys(&repo_root, &dev_public, &ci_public)?;
 
     config::write_repo_id_file(&repo_root, &repo_identifier)
         .context("Failed to write repo identifier file")?;
@@ -68,7 +65,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     println!();
     println!("Created:");
     println!(
-        "  {}  (repo encrypted files + public keys)",
+        "  {}  (for encrypted files + public keys)",
         secrets_dir.display()
     );
     println!("  {}  (public keys)", keys_pub_path.display());

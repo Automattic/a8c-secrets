@@ -70,7 +70,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     )?;
 
     if rows.is_empty() {
-        println!("No secret files.");
+        println!("No secret files yet. Run `a8c-secrets edit <filename>` to start adding some.");
         return Ok(());
     }
 

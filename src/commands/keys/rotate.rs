@@ -211,7 +211,7 @@ pub(crate) fn apply_key_rotation(
         "NOTE: Each `.age` was written from plaintext under ~/.a8c-secrets/ (after a full \"in sync\" preflight); local decrypted files were not modified."
     );
     println!(
-        "NOTE: Rotate provider/API secrets separately as needed, then `a8c-secrets encrypt` (often `--force`) to committing new secret content."
+        "NOTE: Rotate provider/API secrets separately as needed, then `a8c-secrets encrypt` (often `--force`) to commit new secret content."
     );
 
     Ok(())

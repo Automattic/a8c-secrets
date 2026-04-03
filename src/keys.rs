@@ -213,7 +213,7 @@ pub fn save_public_keys(
 ) -> Result<()> {
     let path = public_keys_path(repo_root);
     let content = format!("# dev\n{dev_public}\n# ci\n{ci_public}\n");
-    std::fs::write(&path, content.as_bytes())
+    config::atomic_write(&path, content.as_bytes())
         .with_context(|| format!("Failed to write {}", path.display()))?;
     Ok(())
 }

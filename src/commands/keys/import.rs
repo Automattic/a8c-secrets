@@ -25,9 +25,9 @@ pub fn run() -> Result<()> {
     let key_path = keys::private_key_path(&repo_identifier)?;
     let had_existing_key = key_path.exists();
     if had_existing_key {
-        if !io::stdin().is_terminal() {
+        if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
             anyhow::bail!(
-                "❗️ A private key already exists at {}. Replacing it requires an interactive terminal for confirmation. For team key rotation use `a8c-secrets keys rotate`, not import.",
+                "❗️ A private key already exists at {}. Replacing it requires an interactive terminal for confirmation. For team key rotation use `keys rotate`, not `keys import`.",
                 key_path.display()
             );
         }

@@ -12,6 +12,10 @@ fn should_attempt_smart_compare(force: bool, has_private_key: bool, age_exists: 
     !force && has_private_key && age_exists
 }
 
+/// Amongst the files asked to be encrypted (`files_to_consider`), report any that is
+/// not part of the list of decrypted files, but for which a corresponding `.age` file already exists
+///
+/// This is used to print a warning to the user if such case happens.
 fn collect_missing_decrypted_warnings(
     age_files: &[SecretFileName],
     decrypted_files: &BTreeSet<SecretFileName>,
@@ -90,6 +94,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
     let mut encrypted_count = 0;
     let mut skipped_count = 0;
 
+    // Finally, iterate over the files to consider and encrypt them, using smart comparison if possible.
     for name in &files_to_consider {
         let decrypted_path = decrypted_dir.join(name.as_str());
         let age_path = secrets_dir.join(format!("{name}.age"));
@@ -99,7 +104,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EncryptArgs) -> Result<()> {
                 .with_context(|| format!("Failed to read {}", decrypted_path.display()))?,
         );
 
-        // Smart comparison: if .age exists and we have a private key, decrypt and compare
+        // Smart comparison: if .age exists and we have a private key, decrypt and compare, to avoid re-encrypting if the file is unchanged.
         if should_attempt_smart_compare(args.force, private_key.is_some(), age_path.exists())
             && let Some(ref key) = private_key
         {

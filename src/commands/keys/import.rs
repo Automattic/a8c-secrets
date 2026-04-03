@@ -37,7 +37,7 @@ pub fn run() -> Result<()> {
         );
         if !Confirm::new("Are you sure you want to continue?")
             .with_help_message(
-                "Only confirm if your current key is wrong or not working. To rotate existing keys for the repo, use `a8c-secrets keys rotate` instead.",
+                "Only confirm if your local private key is incorrect or has been rotated to a new one by a coworker.",
             )
             .with_default(false)
             .prompt()
@@ -69,6 +69,7 @@ pub fn run() -> Result<()> {
                 .map_err(|e| anyhow::anyhow!(e))?,
         )
     } else {
+        // Read one line from stdin if it's not a TTY (e.g. piped key in CI).
         let mut line = Zeroizing::new(String::new());
         io::stdin().lock().read_line(&mut line)?;
         line

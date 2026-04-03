@@ -10,6 +10,12 @@ use crate::crypto::CryptoEngine;
 use crate::keys;
 use crate::permissions;
 
+/// Compute the list of decrypted files that have no corresponding .age file in the repository.
+///
+/// This usually means that either those files were just created but were never encrypted,
+/// or that they were encrypted but then removed from the repository (e.g. secret dropped from git)
+/// by another user in a separate commit and now the local user might want to clean up the obsolete
+/// decrypted files.
 fn compute_orphans(
     decrypted_files: &[SecretFileName],
     age_files: &BTreeSet<SecretFileName>,
@@ -58,6 +64,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
     let mut decrypted_count = 0usize;
     let mut decrypt_failures = 0usize;
 
+    // Decrypt all the .age files into the decrypted directory.
     for name in &age_files {
         let age_path = secrets_dir.join(format!("{name}.age"));
         let out_path = out_dir.join(name.as_str());
@@ -86,7 +93,8 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &DecryptArgs) -> Result<()> {
         out_dir.display()
     );
 
-    // Orphan detection: decrypted files with no corresponding .age
+    // Orphan detection: suggest to clean up decrypted files with no corresponding .age,
+    // which typically correspond to secrets that were removed from the remote repository.
     handle_orphans(
         &repo_identifier,
         &age_files,

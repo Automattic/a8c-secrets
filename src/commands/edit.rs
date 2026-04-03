@@ -118,8 +118,9 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
     let repo_identifier = config::repo_identifier(&repo_root)?;
     require_edit_tty()?;
     let editor_spec = resolved_editor_spec();
-    let explicit_cli_file = args.file.is_some();
     let file = resolve_secret_to_edit(&repo_identifier, args, &editor_spec)?;
+    let explicit_cli_file = args.file.is_some();
+    // Check early that valid public keys are available, to exit early if not instead of only erroring later.
     let public_keys = keys::load_public_keys(&repo_root)?;
 
     let decrypted_dir = config::decrypted_dir(&repo_identifier)?;
@@ -135,7 +136,10 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
         } else {
             return Err(err_decrypted_path_not_regular_file(&file));
         };
+        // Confirm the edit operation with the user, especially so they can validate they trust the editor command,
+        // but also to prevent AI agents and non-interactive workflows from using that command with a fishy EDITOR
         confirm_cli_edit_session(&file, &editor_spec, creating)?;
+        // If the file doesn't exist yet, create an empty one and set the right permissions on it early
         if creating {
             if decrypted_path.is_file() {
                 anyhow::bail!(
@@ -155,21 +159,22 @@ pub fn run(crypto_engine: &dyn CryptoEngine, args: &EditArgs) -> Result<()> {
         anyhow::bail!("Decrypted file '{file}' is missing under the secrets home.");
     }
 
+    // Read the file content before the editor session -- to compare it later with the new content and know if it changed or not.
     let before = Zeroizing::new(std::fs::read(&decrypted_path)?);
 
-    let status = command_for_editor(&editor_spec, &decrypted_path)?
+    let cmd_status = command_for_editor(&editor_spec, &decrypted_path)?
         .status()
         .with_context(|| format!("Failed to launch editor: {editor_spec}"))?;
 
-    // Match `decrypt`: editors often leave world-readable files (umask); tighten after save.
+    // Match `decrypt`: editors often leave world-readable files (umask); tighten after save to be extra sure.
     permissions::set_secure_file_permissions(&decrypted_path)?;
 
-    if !status.success() {
+    if !cmd_status.success() {
         anyhow::bail!("Editor exited with non-zero status");
     }
-    // Hash after editing
-    let after = Zeroizing::new(std::fs::read(&decrypted_path)?);
 
+    // Check if the content changed between before and after, so we can skip the encryption if not.
+    let after = Zeroizing::new(std::fs::read(&decrypted_path)?);
     if before.as_slice() == after.as_slice() {
         println!("No changes detected.");
         return Ok(());

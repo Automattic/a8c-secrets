@@ -50,7 +50,7 @@ fn print_rotation_reminder() {
     println!();
     println!(
         "  • Revoke or disable old credentials at each provider as soon as your runbook allows; \
-         rotating age keys does not expire API keys by itself."
+         rotating age keys does not expire API keys stored in the secret files by itself."
     );
     println!();
     println!(
@@ -168,8 +168,10 @@ pub(crate) fn apply_key_rotation(
     old_public_key: &PublicKey,
     rotating_owned: bool,
 ) -> Result<()> {
+    // Generate a new key pair.
     let (new_private_key, new_public_key) = crypto_engine.keygen()?;
 
+    // Update `keys.pub` to replace the old public key with the new one.
     keys::replace_recipient_public_key_in_keys_pub(repo_root, old_public_key, &new_public_key)?;
 
     let recipient_public_keys_after_rotation = keys::load_public_keys(repo_root)?;
@@ -178,6 +180,7 @@ pub(crate) fn apply_key_rotation(
     let decrypted_dir = config::decrypted_dir(repo_identifier)?;
     let age_files = config::list_age_files(repo_root)?;
 
+    // Re-encrypt each `.age` file from the matching plaintext under `~/.a8c-secrets/` with the new set of public keys from `keys.pub`.
     for name in &age_files {
         let decrypted_path = decrypted_dir.join(name.as_str());
         let plaintext = Zeroizing::new(
@@ -191,6 +194,8 @@ pub(crate) fn apply_key_rotation(
         println!("  {name} — re-encrypted");
     }
 
+    // If the public key being rotated is the one derived from the user's current local identity,
+    // update the local private key file with the newly generated private key too.
     if rotating_owned {
         let key_path = keys::save_private_key(repo_identifier, &new_private_key)?;
         println!();
@@ -206,7 +211,7 @@ pub(crate) fn apply_key_rotation(
         "NOTE: Each `.age` was written from plaintext under ~/.a8c-secrets/ (after a full \"in sync\" preflight); local decrypted files were not modified."
     );
     println!(
-        "NOTE: Rotate provider/API secrets separately as needed, then `a8c-secrets encrypt` (often `--force`) when committing new secret content."
+        "NOTE: Rotate provider/API secrets separately as needed, then `a8c-secrets encrypt` (often `--force`) to commit new secret content."
     );
 
     Ok(())
@@ -234,6 +239,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     let repo_root = config::find_repo_root()?;
     let repo_identifier = config::repo_identifier(&repo_root)?;
 
+    // Load existing material
     let private_key_for_decrypt = keys::get_private_key(&repo_identifier)?;
     let public_key_from_decrypt_private_key = private_key_for_decrypt.to_public();
     let public_keys = keys::load_public_keys(&repo_root)?;
@@ -241,10 +247,11 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
     if !public_keys.contains(&public_key_from_decrypt_private_key) {
         anyhow::bail!(
             "Your local private key does not match any public key in keys.pub. \
-             Import a key that appears in keys.pub (run `a8c-secrets keys import`)."
+             Import a key that appears in keys.pub first (run `a8c-secrets keys import`)."
         );
     }
 
+    // Check that all secret files are in sync before going forward.
     let sync_rows = secret_file_statuses(
         crypto_engine,
         &repo_root,
@@ -261,11 +268,13 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
         anyhow::bail!("secret files are not all in sync; see `a8c-secrets status` and retry");
     }
 
+    // Print the rotation reminder then ask the user to select the public key to rotate.
     print_rotation_reminder();
 
     let selection =
         select_public_key_to_rotate(&public_keys, &public_key_from_decrypt_private_key)?;
 
+    // Print the confirmation plan to the user.
     let keys_pub_path = keys::public_keys_path(&repo_root);
     let local_key_path = keys::private_key_path(&repo_identifier)?;
     let secrets_dir = repo_root.join(REPO_SECRETS_DIR);
@@ -286,6 +295,7 @@ pub fn run(crypto_engine: &dyn CryptoEngine) -> Result<()> {
 
     confirm_rotation()?;
 
+    // Finally do the actual key rotation.
     apply_key_rotation(
         crypto_engine,
         &repo_root,

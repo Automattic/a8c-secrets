@@ -23,20 +23,22 @@ pub fn run() -> Result<()> {
     let repo_identifier = config::repo_identifier(&repo_root)?;
 
     let key_path = keys::private_key_path(&repo_identifier)?;
-    if key_path.exists() {
+    let had_existing_key = key_path.exists();
+    if had_existing_key {
         if !io::stdin().is_terminal() {
             anyhow::bail!(
-                "A private key already exists at {}. Replacing it requires an interactive terminal for confirmation. For team key rotation use `a8c-secrets keys rotate`, not import.",
+                "❗️ A private key already exists at {}. Replacing it requires an interactive terminal for confirmation. For team key rotation use `a8c-secrets keys rotate`, not import.",
                 key_path.display()
             );
         }
-        let replace_msg = format!(
-            "A private key already exists at {}. Importing will replace it. Are you sure you want to continue?",
+        println!(
+            "❗️ A private key already exists at {}. Importing will replace it.",
             key_path.display()
         );
-        const REPLACE_HELP: &str = "Only confirm if your current key is wrong or not working. To rotate existing keys for the repo, use `a8c-secrets keys rotate` instead.";
-        if !Confirm::new(&replace_msg)
-            .with_help_message(REPLACE_HELP)
+        if !Confirm::new("Are you sure you want to continue?")
+            .with_help_message(
+                "Only confirm if your current key is wrong or not working. To rotate existing keys for the repo, use `a8c-secrets keys rotate` instead.",
+            )
             .with_default(false)
             .prompt()
             .map_err(|e| anyhow::anyhow!(e))?
@@ -72,10 +74,9 @@ pub fn run() -> Result<()> {
     let key = PrivateKey::from_str(raw.trim())
         .map_err(|e| anyhow::anyhow!("Invalid private key: {e}"))?;
 
-    let existed = key_path.exists();
     let saved_path = keys::save_private_key(&repo_identifier, &key)?;
 
-    if existed {
+    if had_existing_key {
         println!("Updated {}", saved_path.display());
     } else {
         println!("Saved to {}", saved_path.display());

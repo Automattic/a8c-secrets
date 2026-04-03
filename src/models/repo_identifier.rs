@@ -65,9 +65,9 @@ impl RepoIdentifier {
         let repo = repo.to_ascii_lowercase();
         let host = host.to_ascii_lowercase();
         let org = org.to_ascii_lowercase();
-        validate_repo_segment(&repo, "repo")?;
-        validate_repo_segment(&host, "host")?;
-        validate_repo_segment(&org, "org")?;
+        validate_repo_id_segment(&repo, "repo")?;
+        validate_repo_id_segment(&host, "host")?;
+        validate_repo_id_segment(&org, "org")?;
         Ok(Self::new(repo, host, org))
     }
 
@@ -98,7 +98,7 @@ impl fmt::Display for RepoIdentifier {
     }
 }
 
-fn validate_repo_segment(part: &str, label: &'static str) -> Result<()> {
+fn validate_repo_id_segment(part: &str, label: &'static str) -> Result<()> {
     validate_single_path_segment(part, "Repo identifier component")?;
     if part.contains('@') {
         anyhow::bail!("Repo identifier {label} must not contain '@'");
@@ -126,9 +126,9 @@ impl TryFrom<String> for RepoIdentifier {
         let repo = parts[0];
         let host = parts[1];
         let org = parts[2];
-        validate_repo_segment(repo, "repo")?;
-        validate_repo_segment(host, "host")?;
-        validate_repo_segment(org, "org")?;
+        validate_repo_id_segment(repo, "repo")?;
+        validate_repo_id_segment(host, "host")?;
+        validate_repo_id_segment(org, "org")?;
         Ok(Self::new(
             repo.to_string(),
             host.to_string(),

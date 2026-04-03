@@ -100,17 +100,22 @@ NOTES:
         long_about = "\
 Open a secret file in your editor for modification.
 
-Opens ~/.a8c-secrets/<repo-id>/<file> in $EDITOR (default: vi on Unix / notepad on Windows). The value is parsed
-like shell words (program plus optional arguments; quote paths that contain spaces).
+With a file name: opens ~/.a8c-secrets/<repo-id>/<file> in $EDITOR (default: vi on Unix / notepad on Windows).
+The value is parsed like shell words (program plus optional arguments; quote paths that contain spaces).
 Compares file content before and after the editor session — only encrypts if changed.
-If the file doesn't exist, prompts to create it.
+If the file doesn't exist, you are prompted to confirm creating it (when the name is on the command line).
 
-Requires stdin connected to a terminal for prompts (same idea as `rm` without
---non-interactive).",
+Without a file name: lists existing decrypted secrets to choose from (run `decrypt` first). To create
+a new secret, pass its name: `a8c-secrets edit <file>`.
+
+Requires stdin and stdout connected to a terminal (interactive use only). When you pass the secret name
+on the command line, you must confirm editing or creating it before $EDITOR runs, including a warning to
+only continue if you trust EDITOR. Picking a secret from the list does not repeat that prompt.",
         after_long_help = "\
 EXAMPLES:
-  a8c-secrets edit google-services.json   # Edit an existing secret
-  a8c-secrets edit new-config.yml         # Create and edit a new secret
+  a8c-secrets edit                        # Pick among existing decrypted secrets (TTY only)
+  a8c-secrets edit google-services.json   # Edit an existing secret (confirm + trust EDITOR)
+  a8c-secrets edit new-config.yml         # Create and edit a new secret (confirm + trust EDITOR)
   EDITOR=code a8c-secrets edit api.json   # Use VS Code as editor
   EDITOR='code --wait' a8c-secrets edit api.json   # VS Code with flags (shell word splitting)"
     )]
@@ -188,8 +193,8 @@ pub struct EncryptArgs {
 
 #[derive(Debug, clap::Args)]
 pub struct EditArgs {
-    /// Name of the secret file to edit (e.g. "google-services.json")
-    pub file: SecretFileName,
+    /// Secret file to edit. Omit to pick from existing decrypted files; pass a name to edit or create.
+    pub file: Option<SecretFileName>,
 }
 
 #[derive(Debug, clap::Args)]
@@ -372,16 +377,23 @@ mod tests {
     fn parse_edit() {
         let cli = parse(&["edit", "secret.json"]).unwrap();
         if let Command::Edit(args) = cli.command {
-            assert_eq!(args.file, SecretFileName::try_from("secret.json").unwrap());
+            assert_eq!(
+                args.file,
+                Some(SecretFileName::try_from("secret.json").unwrap())
+            );
         } else {
             panic!("expected Edit");
         }
     }
 
     #[test]
-    fn parse_edit_missing_file_errors() {
-        let err = parse(&["edit"]).unwrap_err();
-        assert_eq!(err.kind(), ErrorKind::MissingRequiredArgument);
+    fn parse_edit_without_file() {
+        let cli = parse(&["edit"]).unwrap();
+        if let Command::Edit(args) = cli.command {
+            assert!(args.file.is_none());
+        } else {
+            panic!("expected Edit");
+        }
     }
 
     #[test]

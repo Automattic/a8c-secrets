@@ -35,8 +35,8 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         *)
-            echo "Unknown option: $1"
-            echo "Usage: $0 [--prefix /custom/path]"
+            echo "Unknown option: $1" >&2
+            echo "Usage: $0 [--prefix /custom/path]" >&2
             exit 1
             ;;
     esac
@@ -67,7 +67,7 @@ case "$OS" in
                 TARGET_TRIPLE="x86_64-apple-darwin"
                 ;;
             *)
-                echo "Unsupported architecture on macOS: $ARCH"
+                echo "Unsupported architecture on macOS: $ARCH" >&2
                 exit 2
                 ;;
         esac
@@ -81,7 +81,7 @@ case "$OS" in
                 TARGET_TRIPLE="aarch64-unknown-linux-gnu"
                 ;;
             *)
-                echo "Unsupported architecture on Linux: $ARCH"
+                echo "Unsupported architecture on Linux: $ARCH" >&2
                 exit 2
                 ;;
         esac
@@ -92,29 +92,47 @@ case "$OS" in
                 TARGET_TRIPLE="x86_64-pc-windows-gnu"
                 ;;
             *)
-                echo "Unsupported architecture on Windows: $ARCH"
+                echo "Unsupported architecture on Windows: $ARCH" >&2
                 exit 2
                 ;;
         esac
         ;;
     *)
-        echo "Unsupported operating system: $OS"
+        echo "Unsupported operating system: $OS" >&2
         exit 2
         ;;
 esac
 
-# Get the latest release tag from GitHub API
+# Common curl flags used for every request:
+#   --location    follow redirects
+#   --silent      suppress the progress meter
+#   --show-error  still print the reason for a failure (HTTP status or connection error) to stderr, instead of swallowing it
+#   --fail        turn an HTTP error response (e.g. 429) into a non-zero exit
+CURL_FLAGS=(--location --silent --show-error --fail)
+
+# For GitHub API requests, add an Authorization header when GITHUB_TOKEN is set.
+# This raises the API rate limit, helping avoid HTTP 429.
+GITHUB_API_CURL_FLAGS=("${CURL_FLAGS[@]}")
+if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    GITHUB_API_CURL_FLAGS+=(--header "Authorization: Bearer $GITHUB_TOKEN")
+fi
+
+# Get the latest release tag from GitHub API.
 LATEST_RELEASE_URL="https://api.github.com/repos/Automattic/a8c-secrets/releases/latest"
-RELEASE_INFO=$(curl --location --silent "$LATEST_RELEASE_URL")
+echo "Fetching latest release information from GitHub..."
+if ! RELEASE_INFO=$(curl "${GITHUB_API_CURL_FLAGS[@]}" "$LATEST_RELEASE_URL"); then
+    echo "Failed to fetch release information from GitHub" >&2
+    exit 1
+fi
 if [[ -z "$RELEASE_INFO" ]]; then
-    echo "Failed to fetch release information from GitHub"
+    echo "Failed to fetch release information from GitHub" >&2
     exit 1
 fi
 
 # Extract the version (tag_name) from the release info
 VERSION=$(echo "$RELEASE_INFO" | jq -r '.tag_name // empty')
 if [[ -z "$VERSION" ]] || [[ "$VERSION" == "null" ]]; then
-    echo "Failed to extract version from release information"
+    echo "Failed to extract version from release information" >&2
     exit 1
 fi
 
@@ -149,14 +167,15 @@ fi
 
 # Create temp directory for download
 TEMP_DIR=$(mktemp -d)
-trap "rm -rf '$TEMP_DIR'" EXIT
+trap 'rm -rf "$TEMP_DIR"' EXIT
 
 # Download the binary to temp directory
 DOWNLOAD_URL="https://github.com/Automattic/a8c-secrets/releases/download/${VERSION}/${ASSET_NAME}"
 TEMP_BINARY="$TEMP_DIR/$EXECUTABLE_NAME"
 echo "Downloading $ASSET_NAME from GitHub releases..."
-if ! curl --location --silent --fail --output "$TEMP_BINARY" "$DOWNLOAD_URL"; then
-    echo "Failed to download $ASSET_NAME from $DOWNLOAD_URL"
+# Note: no Authorization header here on purpose. This URL is github.com (the release asset CDN), not the api.github.com API
+if ! curl "${CURL_FLAGS[@]}" --output "$TEMP_BINARY" "$DOWNLOAD_URL"; then
+    echo "Failed to download $ASSET_NAME from $DOWNLOAD_URL" >&2
     exit 1
 fi
 
@@ -184,6 +203,6 @@ if [[ -f "$INSTALL_PATH" ]] && [[ -x "$INSTALL_PATH" ]]; then
         echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
     fi
 else
-    echo "Installation failed: $INSTALL_PATH is not executable"
+    echo "Installation failed: $INSTALL_PATH is not executable" >&2
     exit 1
 fi

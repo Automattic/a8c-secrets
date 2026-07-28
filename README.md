@@ -24,7 +24,7 @@ curl -fsSL https://raw.githubusercontent.com/Automattic/a8c-secrets/main/install
 
 ## Quick start
 
-**First-time repo setup** (run once by a maintainer):
+**First-time repo setup** (run only once on the repo by a maintainer):
 
 ```sh
 cd my-repo
@@ -32,7 +32,7 @@ a8c-secrets setup init
 # Follow the printed instructions (Secret Store for dev + CI, then Buildkite)
 ```
 
-**Developer onboarding:**
+**Developer onboarding** (run once by each developer after cloning the repo the first time):
 
 ```sh
 cd my-repo
@@ -40,16 +40,29 @@ a8c-secrets keys import   # Paste the dev private key from Secret Store when pro
 a8c-secrets decrypt
 ```
 
-**Daily workflow:**
+**Daily workflow**
+
+Here are the various commands you'll then mostly use on your daily workflow:
 
 ```sh
-a8c-secrets decrypt          # Get latest secrets after git pull
-a8c-secrets edit              # Pick from existing decrypted secrets (terminal only)
-a8c-secrets edit config.json  # Edit or create by name; confirm before editor; auto-encrypts on save
-a8c-secrets encrypt          # Encrypt any modified files
-a8c-secrets status           # Show encryption/decryption status of each secret file for validation
-git add .a8c-secrets/        # Commit encrypted changes
+a8c-secrets decrypt           # Get latest secrets after git pull
+a8c-secrets which config.json # Shows the path to the decrypted `config.json` file (for you to edit its content)
+a8c-secrets encrypt           # Encrypt any modified files
+a8c-secrets edit              # Pick from existing decrypted secrets to edit (terminal only); auto-encrypts on save
+a8c-secrets edit config.json  # Edit or create by file name; auto-encrypts on save
+a8c-secrets status            # Show encryption/decryption status of each secret file for validation
+git add .a8c-secrets/         # Commit encrypted changes
 ```
+
+> [!NOTE]
+> The `which` and `edit` commands only take a file name (not a file path).
+> 
+> The `a8c-secrets edit` command is just a shortcut/helper command that opens the decrypted file in your `$EDITOR`, then run `encrypt` on save.
+> It basically combines the calls of `$EDITOR $(a8c-secrets which <file>) && a8c-secrets encrypt <file>` for you so you don't have to remember to run `encrypt` after you finished editing the file.
+> Like most POSIX tools, we default to `vi` as an editor if the `EDITOR` env var is not set.
+
+> [!IMPORTANT]
+> If you customized your `EDITOR` env var, be sure that it points to a program that does not exit until _after_ you closed the file being edited. For example if you want to use VSCode as an `EDITOR` (for `a8c-secrets` but also for any other POSIX tools that rely on this `EDITOR` env var), be sure to use `EDITOR='code --wait'` not just `EDITOR=code` so that the `code` command only returns once you close the file, not immediately after having opened it.
 
 Run `a8c-secrets manual` for a comprehensive guide, or `a8c-secrets help <command>` for per-command help.
 

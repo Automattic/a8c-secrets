@@ -62,7 +62,7 @@ git add .a8c-secrets/         # Commit encrypted changes
 > Like most POSIX tools, we default to `vi` as an editor if the `EDITOR` env var is not set.
 
 > [!IMPORTANT]
-> If you customized your `EDITOR` env var, be sure that it points to a program that does not exit until _after_ you closed the file being edited. For example if you want to use VSCode as an `EDITOR` (for `a8c-secrets` but also for any other POSIX tools that rely on this `EDITOR` env var), be sure to use `EDITOR=code --wait` not just `EDITOR=code` so that the `code` command only returns once you close the file, not immediately after having opened it.
+> If you customized your `EDITOR` env var, be sure that it points to a program that does not exit until _after_ you closed the file being edited. For example if you want to use VSCode as an `EDITOR` (for `a8c-secrets` but also for any other POSIX tools that rely on this `EDITOR` env var), be sure to use `EDITOR='code --wait'` not just `EDITOR=code` so that the `code` command only returns once you close the file, not immediately after having opened it.
 
 Run `a8c-secrets manual` for a comprehensive guide, or `a8c-secrets help <command>` for per-command help.
 

@@ -2,7 +2,7 @@
 ---
 
 env:
-  IMAGE_ID: "xcode-26.0"
+  IMAGE_ID: "xcode-26.6"
 
 steps:
   - label: "Lint"

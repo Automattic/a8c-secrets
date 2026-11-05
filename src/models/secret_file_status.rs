@@ -169,7 +169,7 @@ mod tests {
                 let engine = AgeCrateEngine::new();
                 let key = PrivateKey::generate();
                 let rows = secret_file_statuses(&engine, repo.path(), &rid, Some(&key)).unwrap();
-                assert!(rows.is_empty());
+                assert_eq!(rows, Vec::new());
             },
         );
     }

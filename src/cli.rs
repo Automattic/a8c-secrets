@@ -370,7 +370,7 @@ mod tests {
         let cli = parse(&["encrypt"]).unwrap();
         if let Command::Encrypt(args) = cli.command {
             assert!(!args.force);
-            assert!(args.files.is_empty());
+            assert_eq!(args.files, Vec::new());
         } else {
             panic!("expected Encrypt");
         }

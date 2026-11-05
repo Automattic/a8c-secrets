@@ -241,7 +241,7 @@ mod tests {
     fn list_age_files_empty_when_no_dir() {
         let dir = tempfile::tempdir().unwrap();
         let files = list_age_files(dir.path()).unwrap();
-        assert!(files.is_empty());
+        assert_eq!(files, Vec::new());
     }
 
     /// `..age` yields stem `..`, which must not be accepted (path traversal).

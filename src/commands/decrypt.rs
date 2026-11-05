@@ -185,6 +185,6 @@ mod tests {
             SecretFileName::try_from("b.yml").unwrap(),
         ]);
         let orphans = compute_orphans(&decrypted, &age);
-        assert!(orphans.is_empty());
+        assert_eq!(orphans, Vec::new());
     }
 }
